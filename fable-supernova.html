@@ -1,0 +1,233 @@
+<title>FABLE 5 — Supernova</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden;background:#050310}
+  #gl{position:fixed;inset:0;width:100%;height:100%;display:block;cursor:crosshair}
+  .ui{
+    position:fixed;
+    inset:0;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:flex-end;
+    padding:6vh 1.5rem;
+    pointer-events:none;
+    font-family:ui-monospace,'SF Mono','Cascadia Mono',Menlo,Consolas,monospace;
+    text-align:center;
+    transition:opacity 1.8s ease;
+  }
+  .ui.faded{opacity:.25}
+  .ui h1{
+    font-size:clamp(1rem,2.6vw,1.5rem);
+    font-weight:700;
+    letter-spacing:.55em;
+    color:#eee9ff;
+    text-shadow:0 0 24px rgba(255,61,240,.8),0 0 60px rgba(78,225,255,.5);
+    margin-bottom:.7rem;
+  }
+  .ui p{
+    font-size:clamp(.62rem,1.6vw,.78rem);
+    letter-spacing:.3em;
+    text-transform:uppercase;
+    color:#9d92c4;
+  }
+  #flash{
+    position:fixed;inset:0;pointer-events:none;
+    background:radial-gradient(circle at var(--fx,50%) var(--fy,50%),rgba(255,255,255,.9),rgba(255,120,240,.35) 30%,transparent 65%);
+    opacity:0;
+  }
+  #flash.boom{animation:boom 1.2s ease-out}
+  @keyframes boom{0%{opacity:1}100%{opacity:0}}
+  @media (prefers-reduced-motion:reduce){#flash.boom{animation:none}}
+</style>
+
+<canvas id="gl"></canvas>
+<div id="flash"></div>
+<div class="ui" id="ui">
+  <h1>FABLE&thinsp;5</h1>
+  <p>move to bend gravity · click to go supernova</p>
+</div>
+
+<script>
+(function(){
+  var reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var cv = document.getElementById('gl');
+  var gl = cv.getContext('webgl', {antialias:false, alpha:false, powerPreference:'high-performance'});
+  if (!gl){ document.getElementById('ui').innerHTML = '<h1>WEBGL REQUIRED</h1>'; return; }
+
+  var VS = [
+    'attribute vec4 a_p;', // radius, angle0, angularSpeed, size
+    'attribute vec4 a_s;', // z-offset, warmMix, phase, brightness
+    'uniform float u_t;',
+    'uniform vec2  u_mouse;',
+    'uniform float u_click;',
+    'uniform vec2  u_clickPos;',
+    'uniform float u_aspect;',
+    'uniform float u_dpr;',
+    'varying vec3 v_color;',
+    'varying float v_glow;',
+    'void main(){',
+    '  float r = a_p.x;',
+    '  float theta = a_p.y + u_t * a_p.z / (0.35 + r) + r * 3.1;',
+    '  vec3 pos = vec3(cos(theta)*r, sin(theta)*r, a_s.x*(0.28 - r*0.12));',
+    '  pos.z += 0.018*sin(u_t*0.8 + a_s.z);',
+    /* supernova shockwave */
+    '  v_glow = 0.0;',
+    '  float ct = u_t - u_click;',
+    '  if (ct > 0.0 && ct < 4.5){',
+    '    float wave = ct * 0.85;',
+    '    float d = length(pos.xy);',
+    '    float g = exp(-pow((d - wave)*5.5, 2.0));',
+    '    float decay = 1.0 - ct/4.5;',
+    '    pos.xy += (pos.xy/max(d,0.001)) * g * 0.4 * decay;',
+    '    pos.z  += a_s.x * g * 0.25 * decay;',
+    '    v_glow = g * decay * 2.5;',
+    '  }',
+    /* camera: slow spin + tilt */
+    '  float cs = cos(u_t*0.055), sn = sin(u_t*0.055);',
+    '  pos = vec3(cs*pos.x + sn*pos.z, pos.y, -sn*pos.x + cs*pos.z);',
+    '  float tc = cos(1.02), ts = sin(1.02);',
+    '  pos = vec3(pos.x, tc*pos.y - ts*pos.z, ts*pos.y + tc*pos.z);',
+    '  float z = pos.z + 2.3;',
+    '  vec2 ndc = pos.xy / z * 1.55;',
+    '  ndc.x /= u_aspect;',
+    /* mouse gravity well */
+    '  vec2 dm = u_mouse - ndc;',
+    '  float md2 = dot(dm,dm);',
+    '  ndc += dm * 0.3 * exp(-md2*7.0);',
+    '  gl_Position = vec4(ndc, 0.0, 1.0);',
+    '  gl_PointSize = max(a_p.w * (2.4/z) * u_dpr, 1.0);',
+    /* color: white core -> cyan -> magenta -> solar rim */
+    '  vec3 cCyan = vec3(0.31,0.88,1.0);',
+    '  vec3 cMag  = vec3(1.0,0.24,0.94);',
+    '  vec3 cSol  = vec3(1.0,0.69,0.18);',
+    '  vec3 col = mix(cCyan, cMag, smoothstep(0.05,0.7,r));',
+    '  col = mix(col, cSol, smoothstep(0.55,1.25,r)*a_s.y);',
+    '  col = mix(vec3(1.0,0.98,0.92), col, smoothstep(0.02,0.3,r));',
+    '  v_color = col * a_s.w;',
+    '}'
+  ].join('\n');
+
+  var FS = [
+    'precision mediump float;',
+    'varying vec3 v_color;',
+    'varying float v_glow;',
+    'void main(){',
+    '  vec2 uv = gl_PointCoord - 0.5;',
+    '  float a = smoothstep(0.5, 0.0, length(uv));',
+    '  a *= a;',
+    '  gl_FragColor = vec4(v_color * (1.0 + v_glow*2.5), a);',
+    '}'
+  ].join('\n');
+
+  function shader(type, src){
+    var s = gl.createShader(type);
+    gl.shaderSource(s, src); gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw gl.getShaderInfoLog(s);
+    return s;
+  }
+  var prog = gl.createProgram();
+  gl.attachShader(prog, shader(gl.VERTEX_SHADER, VS));
+  gl.attachShader(prog, shader(gl.FRAGMENT_SHADER, FS));
+  gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw gl.getProgramInfoLog(prog);
+  gl.useProgram(prog);
+
+  /* ---- build the galaxy ---- */
+  var N = 120000;
+  var GLOW = 500;             /* big soft sprites that bloom the core */
+  var TOTAL = N + GLOW;
+  var ARMS = 3;
+  var P = new Float32Array(TOTAL*4);
+  var S = new Float32Array(TOTAL*4);
+  function gauss(){ var a=Math.random(),b=Math.random(); return Math.sqrt(-2*Math.log(a+1e-9))*Math.cos(6.2831853*b); }
+  for (var i=0;i<N;i++){
+    var r = Math.pow(Math.random(), 0.6) * 1.35 + 0.015;
+    var arm = (i % ARMS) * (Math.PI*2/ARMS);
+    var spread = 0.16 + r*0.1;
+    var a0 = arm + gauss()*spread + Math.random()*0.12;
+    P[i*4  ] = r;
+    P[i*4+1] = a0;
+    P[i*4+2] = 0.5 + Math.random()*0.35;           /* angular speed */
+    P[i*4+3] = 0.9 + Math.pow(Math.random(),3)*2.6; /* size */
+    S[i*4  ] = gauss()*0.5;                        /* disk thickness */
+    S[i*4+1] = Math.random();                      /* warm mix */
+    S[i*4+2] = Math.random()*6.2831853;            /* phase */
+    S[i*4+3] = 0.35 + Math.pow(Math.random(),2)*0.9; /* brightness */
+  }
+  for (var g=N;g<TOTAL;g++){
+    var gr = Math.pow(Math.random(),2)*0.5 + 0.02;
+    P[g*4  ] = gr;
+    P[g*4+1] = Math.random()*6.2831853;
+    P[g*4+2] = 0.3 + Math.random()*0.2;
+    P[g*4+3] = 26 + Math.random()*60;              /* huge soft sprite */
+    S[g*4  ] = gauss()*0.35;
+    S[g*4+1] = 0.15;
+    S[g*4+2] = Math.random()*6.2831853;
+    S[g*4+3] = 0.045;                              /* very faint each; 500 add up */
+  }
+  function attach(name, data){
+    var buf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+    var loc = gl.getAttribLocation(prog, name);
+    gl.enableVertexAttribArray(loc);
+    gl.vertexAttribPointer(loc, 4, gl.FLOAT, false, 0, 0);
+  }
+  attach('a_p', P);
+  attach('a_s', S);
+
+  var U = {};
+  ['u_t','u_mouse','u_click','u_clickPos','u_aspect','u_dpr'].forEach(function(n){ U[n] = gl.getUniformLocation(prog, n); });
+
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+  gl.clearColor(0.02, 0.012, 0.055, 1);
+
+  var dpr = Math.min(devicePixelRatio || 1, 2);
+  function size(){
+    cv.width = innerWidth * dpr;
+    cv.height = innerHeight * dpr;
+    gl.viewport(0, 0, cv.width, cv.height);
+    gl.uniform1f(U.u_aspect, innerWidth/innerHeight);
+    gl.uniform1f(U.u_dpr, dpr);
+  }
+  size();
+  addEventListener('resize', size);
+
+  var mouse = [10, 10]; /* far offscreen = no pull */
+  addEventListener('pointermove', function(e){
+    mouse[0] = (e.clientX/innerWidth)*2 - 1;
+    mouse[1] = -((e.clientY/innerHeight)*2 - 1);
+  });
+  addEventListener('pointerleave', function(){ mouse = [10,10]; });
+
+  var clickT = -1000;
+  var flash = document.getElementById('flash');
+  addEventListener('pointerdown', function(e){
+    clickT = tNow;
+    flash.style.setProperty('--fx', (e.clientX/innerWidth*100)+'%');
+    flash.style.setProperty('--fy', (e.clientY/innerHeight*100)+'%');
+    flash.classList.remove('boom');
+    void flash.offsetWidth;
+    flash.classList.add('boom');
+  });
+
+  /* fade the UI after a while */
+  setTimeout(function(){ document.getElementById('ui').classList.add('faded'); }, 6000);
+
+  var t0 = null, tNow = 0;
+  function draw(ts){
+    if (t0 === null) t0 = ts;
+    tNow = (ts - t0)/1000;
+    gl.uniform1f(U.u_t, tNow);
+    gl.uniform2f(U.u_mouse, mouse[0], mouse[1]);
+    gl.uniform1f(U.u_click, clickT);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.drawArrays(gl.POINTS, 0, TOTAL);
+    if (!reduced) requestAnimationFrame(draw);
+  }
+  if (reduced){ draw(8000); } else { requestAnimationFrame(draw); }
+})();
+</script>
