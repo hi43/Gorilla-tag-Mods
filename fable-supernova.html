@@ -1,9 +1,17 @@
 <title>FABLE 5 — Supernova</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
-  html,body{height:100%;overflow:hidden;background:#050310}
-  #gl{position:fixed;inset:0;width:100%;height:100%;display:block;cursor:crosshair}
+  html,body{
+    height:100%;overflow:hidden;background:#050310;
+    position:fixed;inset:0;width:100%;
+    overscroll-behavior:none;
+    touch-action:none;
+    -webkit-user-select:none;user-select:none;
+    -webkit-touch-callout:none;
+    -webkit-tap-highlight-color:transparent;
+  }
+  #gl{position:fixed;inset:0;width:100%;height:100%;display:block;cursor:crosshair;touch-action:none}
   .ui{
     position:fixed;
     inset:0;
@@ -46,12 +54,15 @@
 <div id="flash"></div>
 <div class="ui" id="ui">
   <h1>FABLE&thinsp;5</h1>
-  <p>move to bend gravity · click to go supernova</p>
+  <p id="hint">move to bend gravity · click to go supernova</p>
 </div>
 
 <script>
 (function(){
   var reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var isTouch = matchMedia('(pointer: coarse)').matches;
+  if (isTouch) document.getElementById('hint').textContent = 'drag to bend gravity · tap to go supernova';
+  document.addEventListener('contextmenu', function(e){ e.preventDefault(); });
   var cv = document.getElementById('gl');
   var gl = cv.getContext('webgl', {antialias:false, alpha:false, powerPreference:'high-performance'});
   if (!gl){ document.getElementById('ui').innerHTML = '<h1>WEBGL REQUIRED</h1>'; return; }
@@ -135,7 +146,9 @@
   gl.useProgram(prog);
 
   /* ---- build the galaxy ---- */
-  var N = 120000;
+  /* phones get a lighter star field so it stays at 60fps */
+  var small = Math.min(screen.width, screen.height) < 600;
+  var N = small ? 55000 : 120000;
   var GLOW = 500;             /* big soft sprites that bloom the core */
   var TOTAL = N + GLOW;
   var ARMS = 3;
@@ -206,6 +219,9 @@
   var clickT = -1000;
   var flash = document.getElementById('flash');
   addEventListener('pointerdown', function(e){
+    e.preventDefault();
+    mouse[0] = (e.clientX/innerWidth)*2 - 1;
+    mouse[1] = -((e.clientY/innerHeight)*2 - 1);
     clickT = tNow;
     flash.style.setProperty('--fx', (e.clientX/innerWidth*100)+'%');
     flash.style.setProperty('--fy', (e.clientY/innerHeight*100)+'%');

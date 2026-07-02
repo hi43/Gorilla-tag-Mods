@@ -1,9 +1,17 @@
 <title>FABLE 5 — Event Horizon</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
-  html,body{height:100%;overflow:hidden;background:#050310}
-  #gl{position:fixed;inset:0;width:100%;height:100%;display:block;cursor:crosshair}
+  html,body{
+    height:100%;overflow:hidden;background:#050310;
+    position:fixed;inset:0;width:100%;
+    overscroll-behavior:none;
+    touch-action:none;
+    -webkit-user-select:none;user-select:none;
+    -webkit-touch-callout:none;
+    -webkit-tap-highlight-color:transparent;
+  }
+  #gl{position:fixed;inset:0;width:100%;height:100%;display:block;cursor:crosshair;touch-action:none}
   body.shake #gl{animation:shake .5s ease-out}
   @keyframes shake{
     0%{transform:translate(0,0)} 12%{transform:translate(-14px,9px)}
@@ -75,12 +83,15 @@
 <div id="flash"></div>
 <div class="ui" id="ui">
   <h1>EVENT&thinsp;HORIZON</h1>
-  <p>hold to open a black hole · release to detonate</p>
+  <p id="hint">hold to open a black hole · release to detonate</p>
 </div>
 
 <script>
 (function(){
   var reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var isTouch = matchMedia('(pointer: coarse)').matches;
+  if (isTouch) document.getElementById('hint').textContent = 'touch & hold to open a black hole · let go to detonate';
+  document.addEventListener('contextmenu', function(e){ e.preventDefault(); });
   var cv = document.getElementById('gl');
   var gl = cv.getContext('webgl', {antialias:false, alpha:false, powerPreference:'high-performance'});
   if (!gl){ document.getElementById('ui').innerHTML = '<h1>WEBGL REQUIRED</h1>'; return; }
@@ -188,7 +199,9 @@
   gl.useProgram(prog);
 
   /* ---- build the galaxy ---- */
-  var N = 120000;
+  /* phones get a lighter star field so it stays at 60fps */
+  var small = Math.min(screen.width, screen.height) < 600;
+  var N = small ? 55000 : 120000;
   var GLOW = 500;
   var TOTAL = N + GLOW;
   var ARMS = 3;
@@ -304,13 +317,14 @@
   }
 
   addEventListener('pointerdown', function(e){
+    e.preventDefault();
     px = e.clientX; py = e.clientY;
     mouse = toNDC(px, py);
     held = true;
     ensureAudio();
     if (AC && AC.state === 'suspended') AC.resume();
   });
-  addEventListener('pointerup', function(e){
+  function release(){
     if (!held) return;
     held = false;
     if (strength > 0.08){
@@ -322,7 +336,9 @@
       document.body.classList.remove('shake'); void document.body.offsetWidth; document.body.classList.add('shake');
       boomSound();
     }
-  });
+  }
+  addEventListener('pointerup', release);
+  addEventListener('pointercancel', release);
 
   setTimeout(function(){ document.getElementById('ui').classList.add('faded'); }, 6000);
 
