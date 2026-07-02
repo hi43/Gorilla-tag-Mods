@@ -33,25 +33,27 @@
     background:radial-gradient(circle at var(--fx,50%) var(--fy,50%),rgba(255,255,255,.95),rgba(255,150,60,.45) 25%,rgba(255,61,240,.2) 45%,transparent 70%);
     opacity:0;
   }
-  #flash.boom{animation:boom 1.3s ease-out}
-  @keyframes boom{0%{opacity:1}100%{opacity:0}}
+  #flash.boom{animation:boomA 1.3s ease-out}
+  @keyframes boomA{0%{opacity:1}100%{opacity:0}}
   #hud{
     position:fixed;top:4.5vh;left:0;right:0;
     text-align:center;pointer-events:none;
     font-family:ui-monospace,'SF Mono','Cascadia Mono',Menlo,Consolas,monospace;
-    font-size:clamp(.7rem,2vw,.9rem);
-    letter-spacing:.3em;text-transform:uppercase;
+    font-size:clamp(.62rem,1.9vw,.85rem);
+    letter-spacing:.22em;text-transform:uppercase;
     color:#4ee1ff;
     text-shadow:0 0 14px rgba(78,225,255,.7);
     font-variant-numeric:tabular-nums;
+    white-space:nowrap;
   }
   #hud .warn{color:#ffb02e;text-shadow:0 0 14px rgba(255,176,46,.8)}
+  #hud .surv{color:#ff3df0;text-shadow:0 0 14px rgba(255,61,240,.8)}
   #combo{
-    position:fixed;top:38vh;left:0;right:0;
+    position:fixed;top:36vh;left:0;right:0;
     text-align:center;pointer-events:none;
     font-family:ui-monospace,'SF Mono','Cascadia Mono',Menlo,Consolas,monospace;
-    font-size:clamp(1.2rem,5vw,2.6rem);
-    font-weight:700;letter-spacing:.3em;text-transform:uppercase;
+    font-size:clamp(1.1rem,4.6vw,2.4rem);
+    font-weight:700;letter-spacing:.28em;text-transform:uppercase;
     color:#fff;
     text-shadow:0 0 30px rgba(255,140,40,.9),0 0 80px rgba(255,61,240,.6);
     opacity:0;
@@ -64,21 +66,38 @@
     75%{opacity:1}
     100%{opacity:0;transform:scale(1.04)}
   }
+  #controls{
+    position:fixed;right:3.5vw;bottom:3.5vh;
+    display:flex;gap:.55rem;z-index:6;
+  }
+  #controls button{
+    pointer-events:auto;cursor:pointer;
+    font-family:ui-monospace,'SF Mono','Cascadia Mono',Menlo,Consolas,monospace;
+    font-size:clamp(.6rem,1.8vw,.78rem);
+    letter-spacing:.18em;text-transform:uppercase;
+    color:#9d92c4;
+    background:rgba(23,16,48,.72);
+    border:1px solid #2b2150;
+    border-radius:4px;
+    padding:.55em 1em;
+  }
+  #controls button.on{color:#ff3df0;border-color:#ff3df0;text-shadow:0 0 10px rgba(255,61,240,.7)}
   .ui{
-    position:fixed;inset:0;
-    display:flex;flex-direction:column;align-items:center;justify-content:flex-end;
-    padding:6vh 1.5rem;pointer-events:none;text-align:center;
+    position:fixed;inset:auto 0 3.5vh 0;
+    display:flex;flex-direction:column;align-items:center;
+    padding:0 1.5rem;pointer-events:none;text-align:center;
     font-family:ui-monospace,'SF Mono','Cascadia Mono',Menlo,Consolas,monospace;
     transition:opacity 1.8s ease;
   }
   .ui.faded{opacity:.22}
   .ui h1{
-    font-size:clamp(1rem,2.6vw,1.5rem);font-weight:700;letter-spacing:.55em;color:#eee9ff;
+    font-size:clamp(.95rem,2.4vw,1.4rem);font-weight:700;letter-spacing:.55em;color:#eee9ff;
     text-shadow:0 0 24px rgba(255,140,40,.8),0 0 60px rgba(255,61,240,.5);
-    margin-bottom:.7rem;
+    margin-bottom:.6rem;
   }
   .ui p{
-    font-size:clamp(.62rem,1.6vw,.78rem);letter-spacing:.3em;text-transform:uppercase;color:#9d92c4;
+    font-size:clamp(.58rem,1.55vw,.74rem);letter-spacing:.24em;text-transform:uppercase;color:#9d92c4;
+    max-width:92vw;
   }
   @media (prefers-reduced-motion:reduce){
     body.shake #gl,body.shake-mega #gl{animation:none}
@@ -90,18 +109,23 @@
 <canvas id="gl"></canvas>
 <div id="dim"></div>
 <div id="flash"></div>
-<div id="hud">STARS CONSUMED <span id="count">0</span></div>
+<div id="hud">SCORE 0</div>
 <div id="combo"></div>
+<div id="controls">
+  <button id="warpBtn" type="button">⏱ 1×</button>
+  <button id="survBtn" type="button">⚔ survival</button>
+</div>
 <div class="ui" id="ui">
   <h1>EVENT&thinsp;HORIZON</h1>
-  <p id="hint">hold to open a black hole · keep holding to go supermassive · release to detonate</p>
+  <p id="hint">hold = black hole · hold longer = supermassive + jets · swipe = star cannon · double-tap = white hole</p>
 </div>
 
 <script>
 (function(){
   var reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
   var isTouch = matchMedia('(pointer: coarse)').matches;
-  if (isTouch) document.getElementById('hint').textContent = 'touch & hold · keep holding to go supermassive · two fingers = two holes';
+  if (isTouch) document.getElementById('hint').textContent =
+    'hold = black hole · two fingers = two holes (merge them!) · swipe = star cannon · double-tap = white hole · tilt to look around';
   document.addEventListener('contextmenu', function(e){ e.preventDefault(); });
   var cv = document.getElementById('gl');
   var gl = cv.getContext('webgl', {antialias:false, alpha:false, depth:false, powerPreference:'high-performance'});
@@ -109,13 +133,15 @@
 
   /* =============== SHADERS =============== */
   var STAR_VS = [
-    'attribute vec4 a_p;', // radius, angle0, angularSpeed, size
-    'attribute vec4 a_s;', // z-offset, warmMix, phase, brightness
+    'attribute vec4 a_p;', // galaxy: radius, angle0, angularSpeed, size | ember: -1, idx, rand, baseSize
+    'attribute vec4 a_s;', // z-offset, typeMix, phase, brightness
     'uniform float u_t;',
     'uniform vec2  u_mouse;',
+    'uniform vec2  u_cam;',
     'uniform vec3  u_bh0;',
     'uniform vec3  u_bh1;',
-    'uniform vec4  u_boom;', // x, y (NDC), release time, power
+    'uniform vec3  u_wh;',   // white hole: ndc x, y, strength
+    'uniform vec4  u_boom;', // ndc x, y, sim time, power
     'uniform float u_aspect;',
     'uniform float u_dpr;',
     'varying vec3 v_color;',
@@ -139,13 +165,38 @@
     '  return ndc;',
     '}',
     'void main(){',
+    /* ---------- EMBER BRANCH: detonation debris ---------- */
+    '  if (a_p.x < -0.5){',
+    '    float bt = u_t - u_boom.z;',
+    '    float life = 2.3;',
+    '    if (bt <= 0.02 || bt >= life){',
+    '      gl_Position = vec4(2.0, 2.0, 0.0, 1.0); gl_PointSize = 0.0;',
+    '      v_color = vec3(0.0); v_glow = 0.0; v_fade = 0.0;',
+    '      return;',
+    '    }',
+    '    float ang = a_p.y * 6.2831853 + a_s.x * 3.0;',
+    '    float sp = (0.12 + 0.5*a_p.z) * (0.45 + 0.55*u_boom.w);',
+    '    float rr = sp * bt * (1.0 - 0.22*bt);',
+    '    vec2 e = u_boom.xy + vec2(cos(ang)/u_aspect, sin(ang)) * rr;',
+    '    e.y -= 0.05 * bt * bt;', /* embers sink a little */
+    '    gl_Position = vec4(e, 0.0, 1.0);',
+    '    float flick = 0.55 + 0.45*sin(u_t*22.0 + a_s.y*50.0);',
+    '    gl_PointSize = max(a_p.w * flick * u_dpr, 1.0);',
+    '    v_color = mix(vec3(1.0,0.72,0.25), vec3(1.0,0.32,0.18), a_s.z) * 1.4;',
+    '    v_glow = 1.6 * flick;',
+    '    v_fade = 1.0 - bt/life;',
+    '    return;',
+    '  }',
+    /* ---------- GALAXY BRANCH ---------- */
     '  float r = a_p.x;',
     '  float theta = a_p.y + u_t * a_p.z / (0.35 + r) + r * 3.1;',
     '  vec3 pos = vec3(cos(theta)*r, sin(theta)*r, a_s.x*(0.28 - r*0.12));',
     '  pos.z += 0.018*sin(u_t*0.8 + a_s.z);',
-    '  float cs = cos(u_t*0.055), sn = sin(u_t*0.055);',
+    '  float spin = u_t*0.055 + u_cam.x*0.45;',
+    '  float cs = cos(spin), sn = sin(spin);',
     '  pos = vec3(cs*pos.x + sn*pos.z, pos.y, -sn*pos.x + cs*pos.z);',
-    '  float tc = cos(1.02), ts = sin(1.02);',
+    '  float tilt = 1.02 + u_cam.y*0.35;',
+    '  float tc = cos(tilt), ts = sin(tilt);',
     '  pos = vec3(pos.x, tc*pos.y - ts*pos.z, ts*pos.y + tc*pos.z);',
     '  float z = pos.z + 2.3;',
     '  vec2 ndc = pos.xy / z * 1.55;',
@@ -157,6 +208,13 @@
     '  ndc += dmm * 0.22 * exp(-dot(dmm,dmm)*7.0) * max(1.0 - sTot, 0.0);',
     '  ndc = applyHole(ndc, u_bh0, a_s.z, fade, glow);',
     '  ndc = applyHole(ndc, u_bh1, a_s.z + 2.1, fade, glow);',
+    /* white hole: pushes stars outward and lights them up */
+    '  if (u_wh.z > 0.01){',
+    '    vec2 dw = ndc - u_wh.xy;',
+    '    float dwl = length(dw) + 0.0001;',
+    '    ndc += (dw/dwl) * u_wh.z * 0.5 * exp(-dwl*dwl*4.0);',
+    '    glow += u_wh.z * 2.2 * exp(-dwl*dwl*24.0);',
+    '  }',
     '  float bt = u_t - u_boom.z;',
     '  if (bt > 0.0 && bt < 4.0){',
     '    vec2 db = ndc - u_boom.xy;',
@@ -171,12 +229,20 @@
     '  v_fade = fade;',
     '  gl_Position = vec4(ndc, 0.0, 1.0);',
     '  gl_PointSize = max(a_p.w * (2.4/z) * u_dpr, 1.0);',
+    /* base galaxy colors */
     '  vec3 cCyan = vec3(0.31,0.88,1.0);',
     '  vec3 cMag  = vec3(1.0,0.24,0.94);',
     '  vec3 cSol  = vec3(1.0,0.69,0.18);',
     '  vec3 col = mix(cCyan, cMag, smoothstep(0.05,0.7,r));',
-    '  col = mix(col, cSol, smoothstep(0.55,1.25,r)*a_s.y);',
+    '  col = mix(col, cSol, smoothstep(0.55,1.25,r)*fract(a_s.y*7.31));',
     '  col = mix(vec3(1.0,0.98,0.92), col, smoothstep(0.02,0.3,r));',
+    /* stellar types: red giants, blue supergiants, rare gold stars */
+    '  float typ = a_s.y;',
+    '  if (typ > 0.955){',
+    '    if (typ > 0.995)      col = vec3(1.0, 0.84, 0.30) * 1.5;',  /* gold */
+    '    else if (typ > 0.978) col = vec3(0.55, 0.75, 1.0) * 1.45;', /* blue supergiant */
+    '    else                  col = vec3(1.0, 0.42, 0.22) * 1.25;', /* red giant */
+    '  }',
     '  col = mix(col, vec3(1.0,0.95,0.85), clamp(glow*0.35, 0.0, 1.0));',
     '  v_color = col * a_s.w * 1.15;',
     '}'
@@ -201,18 +267,16 @@
     'void main(){ v_uv = a_pos*0.5+0.5; gl_Position = vec4(a_pos, 0.0, 1.0); }'
   ].join('\n');
 
-  /* trail fade: translucent dark quad drawn over the persistent scene buffer */
   var FADE_FS = [
     'precision mediump float;',
     'void main(){ gl_FragColor = vec4(0.0, 0.0, 0.0, 0.34); }'
   ].join('\n');
 
-  /* separable gaussian blur with optional bright-pass threshold */
   var BLUR_FS = [
     'precision mediump float;',
     'varying vec2 v_uv;',
     'uniform sampler2D u_tex;',
-    'uniform vec2 u_dir;',   // texel-space step
+    'uniform vec2 u_dir;',
     'uniform float u_thresh;',
     'vec3 tap(vec2 uv){',
     '  vec3 c = texture2D(u_tex, uv).rgb;',
@@ -226,7 +290,6 @@
     '}'
   ].join('\n');
 
-  /* final composite: nebula + lensed scene + bloom + photon rings + shock refraction */
   var POST_FS = [
     'precision highp float;',
     'varying vec2 v_uv;',
@@ -234,9 +297,12 @@
     'uniform sampler2D u_bloom;',
     'uniform float u_t;',
     'uniform float u_aspect;',
-    'uniform vec3 u_bh0;',   // uv x, uv y, strength
+    'uniform vec3 u_bh0;',
     'uniform vec3 u_bh1;',
-    'uniform vec4 u_boom;',  // uv x, uv y, time, power
+    'uniform vec3 u_wh;',      // uv x, y, strength
+    'uniform vec4 u_boom;',    // uv x, y, sim time, power
+    'uniform vec4 u_comet;',   // uv x, y, heat, 0
+    'uniform vec2 u_cometDir;',
     'float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453123); }',
     'float noise(vec2 p){',
     '  vec2 i = floor(p), f = fract(p);',
@@ -258,21 +324,41 @@
     '  vec2 d = corr(suv) - hc;',
     '  float r = length(d) + 0.00001;',
     '  float h = (0.035 + 0.095*s) * 0.5;',
-    /* frame dragging: swirl the sampled space around the hole */
     '  float ang = 0.55 * (h*h) / (r*r + h*h*0.2);',
     '  float ca = cos(ang), sa = sin(ang);',
     '  d = mat2(ca,-sa,sa,ca) * d;',
-    /* gravitational deflection: background squeezed toward the photon ring */
     '  float defl = h*h*1.6 / max(r*r, h*h*0.28);',
     '  vec2 sc = hc + d * (1.0 + defl);',
     '  suv = vec2(sc.x / u_aspect, sc.y);',
-    /* event horizon */
     '  dark = max(dark, smoothstep(h*1.05, h*0.90, r));',
-    /* photon ring: thin white-hot inner ring + warm halo */
     '  float ring = exp(-pow((r - h*1.10)/(h*0.13), 2.0));',
     '  ringCol += ring * min(s,1.4) * vec3(1.0, 0.92, 0.78) * 1.5;',
     '  ringCol += exp(-pow((r - h*1.45)/(h*0.55), 2.0)) * min(s,1.4) * vec3(0.95, 0.35, 0.65) * 0.4;',
     '  ringCol += exp(-pow((r - h*2.1)/(h*1.1), 2.0)) * min(s,1.4) * vec3(0.25, 0.5, 0.9) * 0.22;',
+    /* relativistic jets from the poles once supermassive */
+    '  if (s > 1.05){',
+    '    float j = (s - 1.05) * 1.5;',
+    '    vec2 dj = corr(v_uv) - hc;',
+    '    float along = abs(dj.y) - h*1.15;',
+    '    if (along > 0.0){',
+    '      float beam = exp(-pow(dj.x/(h*0.30*(1.0+along*2.4)), 2.0)) * exp(-along*2.6) * j;',
+    '      beam *= 0.72 + 0.28*sin(u_t*9.0 - along*34.0);',
+    '      ringCol += beam * vec3(0.55, 0.85, 1.0) * 1.25;',
+    '    }',
+    '  }',
+    '}',
+    'void whitehole(vec3 wh, inout vec2 suv, inout vec3 ringCol){',
+    '  float s = wh.z;',
+    '  if (s < 0.01) return;',
+    '  vec2 hc = corr(wh.xy);',
+    '  vec2 d = corr(suv) - hc;',
+    '  float r = length(d) + 0.00001;',
+    '  float h = (0.03 + 0.07*s) * 0.5;',
+    '  float defl = h*h*1.2 / max(r*r, h*h*0.3);',
+    '  vec2 sc = hc + d * (1.0 - defl*0.8);',   /* inverted lens: magnify */
+    '  suv = vec2(sc.x / u_aspect, sc.y);',
+    '  ringCol += exp(-pow((r - h)/(h*0.5), 2.0)) * s * vec3(0.75, 0.95, 1.0) * 1.3;',
+    '  ringCol += exp(-r*r/(h*h*4.0)) * s * vec3(0.9, 1.0, 1.0) * 0.9;',
     '}',
     'void main(){',
     '  vec2 suv = v_uv;',
@@ -280,7 +366,7 @@
     '  vec3 ringCol = vec3(0.0);',
     '  hole(u_bh0, suv, dark, ringCol);',
     '  hole(u_bh1, suv, dark, ringCol);',
-    /* expanding shock refraction ring */
+    '  whitehole(u_wh, suv, ringCol);',
     '  float bt = u_t - u_boom.z;',
     '  if (bt > 0.0 && bt < 3.2){',
     '    vec2 d = corr(v_uv) - corr(u_boom.xy);',
@@ -292,28 +378,35 @@
     '    suv -= vec2(shift.x / u_aspect, shift.y);',
     '    ringCol += g * decay * u_boom.w * vec3(1.0, 0.8, 0.55) * 0.55;',
     '  }',
-    /* chromatic aberration along the total distortion vector */
+    /* star cannon comet: bright head + tapered tail */
+    '  if (u_comet.z > 0.001){',
+    '    vec2 cp = corr(u_comet.xy);',
+    '    vec2 d = corr(v_uv) - cp;',
+    '    float r2 = dot(d,d);',
+    '    ringCol += u_comet.z * vec3(0.65, 0.9, 1.0) * exp(-r2/0.00030) * 1.6;',
+    '    float along = dot(d, -u_cometDir);',
+    '    float side = dot(d, vec2(-u_cometDir.y, u_cometDir.x));',
+    '    if (along > 0.0 && along < 0.14){',
+    '      ringCol += u_comet.z * vec3(0.4, 0.7, 1.0) * exp(-side*side/0.00014) * (1.0 - along/0.14) * 0.9;',
+    '    }',
+    '  }',
     '  vec2 dvec = suv - v_uv;',
     '  vec3 scene;',
     '  scene.r = texture2D(u_scene, clampUV(v_uv + dvec*1.06)).r;',
     '  scene.g = texture2D(u_scene, clampUV(suv)).g;',
     '  scene.b = texture2D(u_scene, clampUV(v_uv + dvec*0.94)).b;',
-    /* clip the 8-bit trail residue that never fully decays */
     '  scene = max(scene - 0.025, 0.0) * 1.03;',
     '  vec3 bloom = texture2D(u_bloom, clampUV(suv)).rgb;',
-    /* animated nebula behind everything */
     '  vec2 np = corr(suv);',
     '  float n1 = fbm(np*2.6 + u_t*0.010);',
     '  float n2 = fbm(np*4.8 - u_t*0.007 + 7.3);',
     '  vec3 neb = vec3(0.050,0.030,0.105)*n1*n1*2.1',
     '           + vec3(0.105,0.022,0.125)*n2*n2*n1*1.5',
     '           + vec3(0.012,0.030,0.070)*n2*0.8;',
-    /* faint pin stars in the deep background */
     '  float sp = hash(floor(np*240.0));',
     '  neb += vec3(0.8) * step(0.9985, sp) * (0.3 + 0.7*fract(sp*77.7)) * (0.4 + 0.6*sin(u_t*2.0 + sp*40.0));',
     '  float lit = 1.0 - dark;',
     '  vec3 col = neb*lit + scene*lit + bloom*lit*1.25 + ringCol;',
-    /* vignette + filmic-ish tonemap */
     '  vec2 vc = v_uv - 0.5;',
     '  col *= 1.0 - 0.55*dot(vc,vc)*1.6;',
     '  col = 1.0 - exp(-col*1.4);',
@@ -345,16 +438,16 @@
     names.forEach(function(n){ o[n] = gl.getUniformLocation(prog, n); });
     return o;
   }
-  var US = uniforms(progStars, ['u_t','u_mouse','u_bh0','u_bh1','u_boom','u_aspect','u_dpr']);
+  var US = uniforms(progStars, ['u_t','u_mouse','u_cam','u_bh0','u_bh1','u_wh','u_boom','u_aspect','u_dpr']);
   var UB = uniforms(progBlur, ['u_tex','u_dir','u_thresh']);
-  var UP = uniforms(progPost, ['u_scene','u_bloom','u_t','u_aspect','u_bh0','u_bh1','u_boom']);
+  var UP = uniforms(progPost, ['u_scene','u_bloom','u_t','u_aspect','u_bh0','u_bh1','u_wh','u_boom','u_comet','u_cometDir']);
 
   /* =============== GEOMETRY =============== */
-  /* phones get a lighter star field so it stays at 60fps */
   var small = Math.min(screen.width, screen.height) < 600;
   var N = small ? 55000 : 120000;
-  var GLOW = 500;
-  var TOTAL = N + GLOW;
+  var GLOWN = 500;
+  var EMBERS = 380;
+  var TOTAL = N + GLOWN + EMBERS;
   var ARMS = 3;
   var P = new Float32Array(TOTAL*4);
   var S = new Float32Array(TOTAL*4);
@@ -363,16 +456,18 @@
     var r = Math.pow(Math.random(), 0.6) * 1.35 + 0.015;
     var arm = (i % ARMS) * (Math.PI*2/ARMS);
     var spread = 0.16 + r*0.1;
+    var typ = Math.random();
     P[i*4  ] = r;
     P[i*4+1] = arm + gauss()*spread + Math.random()*0.12;
     P[i*4+2] = 0.5 + Math.random()*0.35;
-    P[i*4+3] = 0.9 + Math.pow(Math.random(),3)*2.6;
+    /* special stellar types are bigger */
+    P[i*4+3] = (0.9 + Math.pow(Math.random(),3)*2.6) * (typ > 0.995 ? 2.4 : typ > 0.955 ? 1.7 : 1.0);
     S[i*4  ] = gauss()*0.5;
-    S[i*4+1] = Math.random();
+    S[i*4+1] = typ;
     S[i*4+2] = Math.random()*6.2831853;
     S[i*4+3] = 0.35 + Math.pow(Math.random(),2)*0.9;
   }
-  for (var g=N;g<TOTAL;g++){
+  for (var g=N;g<N+GLOWN;g++){
     var gr = Math.pow(Math.random(),2)*0.5 + 0.02;
     P[g*4  ] = gr;
     P[g*4+1] = Math.random()*6.2831853;
@@ -382,6 +477,16 @@
     S[g*4+1] = 0.15;
     S[g*4+2] = Math.random()*6.2831853;
     S[g*4+3] = 0.045;
+  }
+  for (var e2=N+GLOWN;e2<TOTAL;e2++){
+    P[e2*4  ] = -1.0;
+    P[e2*4+1] = Math.random();
+    P[e2*4+2] = Math.random();
+    P[e2*4+3] = 1.2 + Math.random()*2.6;
+    S[e2*4  ] = Math.random();
+    S[e2*4+1] = Math.random();
+    S[e2*4+2] = Math.random();
+    S[e2*4+3] = 1.0;
   }
   var bufP = gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER, bufP);
@@ -394,7 +499,6 @@
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
   gl.enableVertexAttribArray(0);
   gl.enableVertexAttribArray(1);
-
   function bindStars(){
     gl.bindBuffer(gl.ARRAY_BUFFER, bufP);
     gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 0, 0);
@@ -435,24 +539,45 @@
   size();
   addEventListener('resize', size);
 
-  /* =============== INPUT: up to two black holes =============== */
+  /* =============== STATE =============== */
   function toNDC(x, y){ return [(x/innerWidth)*2-1, -((y/innerHeight)*2-1)]; }
   function toUV(x, y){ return [x/innerWidth, 1 - y/innerHeight]; }
-  var mouse = [10, 10];
-  var holes = {};            /* pointerId -> {x, y, s} */
-  function holeCount(){ return Object.keys(holes).length; }
+  function fmt(n){ return Math.floor(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g,','); }
 
+  var mouse = [10, 10];
+  var holes = {};              /* pointerId -> {x, y, s, t0, dead} */
+  function activeHoles(){
+    var a = [];
+    for (var id in holes) if (!holes[id].dead) a.push(holes[id]);
+    return a;
+  }
+  var white = { x: 0, y: 0, t0: -1000 };
+  var comet = { x: 0, y: 0, vx: 0, vy: 0, t0: -1000, live: false };
   var boomNDC = [0, 0, -1000, 1];
   var boomUV = [0, 0, -1000, 1];
   var eaten = 0;
+  var score = 0;
+  var combo = 0, lastBoomAt = -1000;
+  var best = 0, bestSurv = 0;
+  try {
+    best = +localStorage.getItem('eh_best') || 0;
+    bestSurv = +localStorage.getItem('eh_best_surv') || 0;
+  } catch(err){}
+  var warp = 1;
+  var WARPS = [1, 3, 0.3];
+  var warpIdx = 0;
+  var survivalEnd = 0, survivalStart = 0, inSurvival = false;
+  var hudMsg = '', hudMsgUntil = 0;
+  var cam = [0, 0], camTarget = [0, 0];
+
   var flash = document.getElementById('flash');
   var dim = document.getElementById('dim');
   var hud = document.getElementById('hud');
-  var countEl = document.getElementById('count');
-  var combo = document.getElementById('combo');
-  function fmt(n){ return Math.floor(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g,','); }
+  var combo_ = document.getElementById('combo');
+  var warpBtn = document.getElementById('warpBtn');
+  var survBtn = document.getElementById('survBtn');
 
-  /* ---- synthesized audio ---- */
+  /* ---- audio ---- */
   var AC = null, rumbleGain = null, rumbleLP = null, noiseBuf = null;
   function ensureAudio(){
     if (AC) return;
@@ -467,14 +592,14 @@
       rumbleGain = AC.createGain(); rumbleGain.gain.value = 0;
       src.connect(rumbleLP); rumbleLP.connect(rumbleGain); rumbleGain.connect(AC.destination);
       src.start();
-    } catch(e){ AC = null; }
+    } catch(err){ AC = null; }
   }
   function boomSound(power){
     if (!AC) return;
     try {
       var t = AC.currentTime;
       var o = AC.createOscillator(); o.type='sine';
-      o.frequency.setValueAtTime(60 + 20/power, t);
+      o.frequency.setValueAtTime(60 + 20/Math.max(power,0.2), t);
       o.frequency.exponentialRampToValueAtTime(24, t + 1.0 + power*0.6);
       var og = AC.createGain();
       og.gain.setValueAtTime(Math.min(0.75, 0.4*power + 0.2), t);
@@ -488,91 +613,256 @@
       ng.gain.exponentialRampToValueAtTime(0.001, t + 0.8 + power*0.4);
       nb.connect(hp); hp.connect(ng); ng.connect(AC.destination);
       nb.start(t); nb.stop(t + 0.9 + power*0.4);
-    } catch(e){}
+    } catch(err){}
   }
 
-  addEventListener('pointerdown', function(e){
-    e.preventDefault();
-    mouse = toNDC(e.clientX, e.clientY);
-    if (holeCount() >= 2) return;
-    holes[e.pointerId] = { x: e.clientX, y: e.clientY, s: 0 };
-    ensureAudio();
-    if (AC && AC.state === 'suspended') AC.resume();
+  /* ---- gyroscope parallax ---- */
+  var gyroArmed = false;
+  function armGyro(){
+    if (gyroArmed) return;
+    gyroArmed = true;
+    try {
+      if (window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === 'function'){
+        DeviceOrientationEvent.requestPermission().catch(function(){});
+      }
+    } catch(err){}
+  }
+  addEventListener('deviceorientation', function(e){
+    if (e.gamma === null || e.beta === null) return;
+    camTarget[0] = Math.max(-1, Math.min(1, e.gamma/40));
+    camTarget[1] = Math.max(-1, Math.min(1, (e.beta - 40)/40));
   });
-  addEventListener('pointermove', function(e){
-    mouse = toNDC(e.clientX, e.clientY);
-    var h = holes[e.pointerId];
-    if (h){ h.x = e.clientX; h.y = e.clientY; }
-  });
-  addEventListener('pointerleave', function(){ mouse = [10,10]; });
 
+  /* ---- detonations ---- */
   function rankFor(power){
     if (power >= 1.7) return 'GALAXY BREAKER';
     if (power >= 1.15) return 'SUPERMASSIVE COLLAPSE';
     if (power >= 0.6) return 'STELLAR DETONATION';
     return 'SHOCKWAVE';
   }
+  function showCombo(text){
+    combo_.textContent = text;
+    combo_.classList.remove('pop'); void combo_.offsetWidth; combo_.classList.add('pop');
+  }
+  function flashMsg(html, ms){
+    hudMsg = html; hudMsgUntil = performance.now() + (ms || 1900);
+  }
+  function triggerBoom(x, y, power, label){
+    var ndc = toNDC(x, y);
+    var uv = toUV(x, y);
+    boomNDC = [ndc[0], ndc[1], simT, power];
+    boomUV  = [uv[0], uv[1], simT, power];
+    flash.style.setProperty('--fx', (x/innerWidth*100)+'%');
+    flash.style.setProperty('--fy', (y/innerHeight*100)+'%');
+    flash.classList.remove('boom'); void flash.offsetWidth; flash.classList.add('boom');
+    document.body.classList.remove('shake','shake-mega'); void document.body.offsetWidth;
+    document.body.classList.add(power > 1.15 ? 'shake-mega' : 'shake');
+    boomSound(power);
+    /* combo chain: detonations within 3.5s multiply */
+    var now = performance.now();
+    combo = (now - lastBoomAt < 3500) ? Math.min(combo + 1, 9) : 1;
+    lastBoomAt = now;
+    var bonus = Math.floor(1200 * power * power) * combo;
+    score += bonus;
+    showCombo((label || rankFor(power)) + (combo > 1 ? ' ×' + combo : ''));
+    return bonus;
+  }
+
+  /* ---- input ---- */
+  var lastDown = { t: -1000, x: 0, y: 0, quick: false };
+  var moveTrail = [];
+  addEventListener('pointerdown', function(e){
+    if (e.target && e.target.closest && e.target.closest('#controls')) return;
+    e.preventDefault();
+    mouse = toNDC(e.clientX, e.clientY);
+    ensureAudio();
+    armGyro();
+    if (AC && AC.state === 'suspended') AC.resume();
+    var now = performance.now();
+    /* double-tap -> white hole */
+    if (lastDown.quick && now - lastDown.t < 350 &&
+        Math.hypot(e.clientX - lastDown.x, e.clientY - lastDown.y) < 60){
+      white = { x: e.clientX, y: e.clientY, t0: simT };
+      score += 500;
+      showCombo('WHITE HOLE');
+      lastDown = { t: -1000, x: 0, y: 0, quick: false };
+      return;
+    }
+    lastDown = { t: now, x: e.clientX, y: e.clientY, quick: false };
+    if (activeHoles().length >= 2) return;
+    holes[e.pointerId] = { x: e.clientX, y: e.clientY, s: 0, t0: now };
+    moveTrail = [{ t: now, x: e.clientX, y: e.clientY }];
+  });
+  addEventListener('pointermove', function(e){
+    mouse = toNDC(e.clientX, e.clientY);
+    var h = holes[e.pointerId];
+    if (h && !h.dead){
+      h.x = e.clientX; h.y = e.clientY;
+      moveTrail.push({ t: performance.now(), x: e.clientX, y: e.clientY });
+      if (moveTrail.length > 6) moveTrail.shift();
+    }
+  });
+  addEventListener('pointerleave', function(){ mouse = [10,10]; });
+
   function release(e){
     var h = holes[e.pointerId];
     if (!h) return;
     delete holes[e.pointerId];
-    if (h.s > 0.08){
-      var ndc = toNDC(h.x, h.y);
-      var uv = toUV(h.x, h.y);
-      boomNDC = [ndc[0], ndc[1], tNow, Math.min(h.s, 2)];
-      boomUV  = [uv[0], uv[1], tNow, Math.min(h.s, 2)];
-      flash.style.setProperty('--fx', (h.x/innerWidth*100)+'%');
-      flash.style.setProperty('--fy', (h.y/innerHeight*100)+'%');
-      flash.classList.remove('boom'); void flash.offsetWidth; flash.classList.add('boom');
-      var mega = h.s > 1.15;
-      document.body.classList.remove('shake','shake-mega'); void document.body.offsetWidth;
-      document.body.classList.add(mega ? 'shake-mega' : 'shake');
-      boomSound(h.s);
-      combo.textContent = rankFor(h.s);
-      combo.classList.remove('pop'); void combo.offsetWidth; combo.classList.add('pop');
-      var released = holeCount() === 0 ? eaten : eaten * 0.5;
-      hud.innerHTML = '<span class="warn">★ ' + fmt(released) + ' STARS RELEASED</span>';
-      eaten = holeCount() === 0 ? 0 : eaten * 0.5;
-      setTimeout(function(){ hud.innerHTML = 'STARS CONSUMED <span id="count">' + fmt(eaten) + '</span>'; countEl = document.getElementById('count'); }, 1900);
+    if (h.dead) return;
+    var now = performance.now();
+    var heldMs = now - h.t0;
+    /* fast short swipe -> star cannon */
+    if (heldMs < 300 && moveTrail.length >= 2){
+      var a = moveTrail[0], b = moveTrail[moveTrail.length-1];
+      var dtms = Math.max(1, b.t - a.t);
+      var vx = (b.x - a.x)/dtms, vy = (b.y - a.y)/dtms;
+      var speed = Math.hypot(vx, vy);
+      if (speed > 0.9){
+        comet = { x: h.x, y: h.y, vx: vx*900, vy: vy*900, t0: simT, live: true };
+        showCombo('STAR CANNON');
+        return;
+      }
+    }
+    if (heldMs < 300){ lastDown.quick = true; return; } /* plain tap: arms double-tap */
+    if (h.s > 0.3){
+      var released = activeHoles().length === 0 ? eaten : eaten * 0.5;
+      triggerBoom(h.x, h.y, Math.min(h.s, 2));
+      flashMsg('<span class="warn">★ ' + fmt(released) + ' STARS RELEASED</span>');
+      eaten = activeHoles().length === 0 ? 0 : eaten * 0.5;
     }
   }
   addEventListener('pointerup', release);
   addEventListener('pointercancel', release);
 
-  setTimeout(function(){ document.getElementById('ui').classList.add('faded'); }, 6000);
+  /* ---- controls ---- */
+  warpBtn.addEventListener('click', function(){
+    warpIdx = (warpIdx + 1) % WARPS.length;
+    warp = WARPS[warpIdx];
+    warpBtn.textContent = '⏱ ' + (warp === 0.3 ? '⅓×' : warp + '×');
+    warpBtn.classList.toggle('on', warp !== 1);
+  });
+  survBtn.addEventListener('click', function(){
+    if (inSurvival){
+      inSurvival = false;
+      survBtn.classList.remove('on');
+      survBtn.textContent = '⚔ survival';
+      return;
+    }
+    inSurvival = true;
+    survivalStart = score;
+    survivalEnd = performance.now() + 60000;
+    survBtn.classList.add('on');
+    survBtn.textContent = '⚔ abort';
+    showCombo('60 SECONDS · DESTROY');
+  });
+
+  setTimeout(function(){ document.getElementById('ui').classList.add('faded'); }, 7000);
 
   /* =============== RENDER LOOP =============== */
-  var t0 = null, tNow = 0, lastTs = 0;
+  var t0 = null, lastTs = 0, simT = 0;
   function draw(ts){
     if (t0 === null){ t0 = ts; lastTs = ts; }
     var dt = Math.min(0.05, (ts - lastTs)/1000); lastTs = ts;
-    tNow = (ts - t0)/1000;
+    simT += dt * warp;
     var aspect = innerWidth/innerHeight;
+    var realNow = performance.now();
 
-    /* grow held holes */
-    var list = [];
+    cam[0] += (camTarget[0] - cam[0]) * 0.06;
+    cam[1] += (camTarget[1] - cam[1]) * 0.06;
+
+    /* grow holes, detect merges */
+    var act = activeHoles();
     var sTot = 0, sMax = 0;
-    for (var id in holes){
-      var h = holes[id];
+    for (var k=0;k<act.length;k++){
+      var h = act[k];
       h.s += (h.s < 1 ? dt*0.55*(1.8 - h.s) : dt*0.16);
       if (h.s > 2) h.s = 2;
       sTot += h.s; if (h.s > sMax) sMax = h.s;
-      eaten = Math.min(N, eaten + dt * 9000 * h.s * h.s);
-      list.push(h);
+      var inc = dt * 9000 * h.s * h.s;
+      eaten = Math.min(N, eaten + inc);
+      score += inc * 0.5;
+    }
+    /* binary merger */
+    if (act.length === 2){
+      var r0 = (0.035 + 0.095*act[0].s) * innerHeight/2;
+      var r1 = (0.035 + 0.095*act[1].s) * innerHeight/2;
+      if (Math.hypot(act[0].x - act[1].x, act[0].y - act[1].y) < (r0 + r1) * 0.85){
+        var keep = act[0].s >= act[1].s ? act[0] : act[1];
+        var lose = keep === act[0] ? act[1] : act[0];
+        keep.s = Math.min(2, keep.s + lose.s * 0.85);
+        lose.dead = true;
+        var mx = (act[0].x + act[1].x)/2, my = (act[0].y + act[1].y)/2;
+        triggerBoom(mx, my, 0.5, 'BINARY MERGER');
+        score += 2500;
+      }
     }
     dim.style.opacity = Math.max(0, Math.min(0.55, (sMax - 0.9) * 0.6));
     if (rumbleGain){
       rumbleGain.gain.value = Math.min(0.55, sTot * 0.35);
       rumbleLP.frequency.value = 90 + sMax * 60;
     }
-    if (countEl && holeCount() > 0) countEl.textContent = fmt(eaten);
 
-    var n0 = list[0] ? toNDC(list[0].x, list[0].y).concat(list[0].s) : [0,0,0];
-    var n1 = list[1] ? toNDC(list[1].x, list[1].y).concat(list[1].s) : [0,0,0];
-    var v0 = list[0] ? toUV(list[0].x, list[0].y).concat(list[0].s) : [0,0,0];
-    var v1 = list[1] ? toUV(list[1].x, list[1].y).concat(list[1].s) : [0,0,0];
+    /* comet flight */
+    var cometHeat = 0;
+    if (comet.live){
+      comet.x += comet.vx * dt * warp;
+      comet.y += comet.vy * dt * warp;
+      var age = simT - comet.t0;
+      cometHeat = 1;
+      var off = comet.x < -40 || comet.x > innerWidth+40 || comet.y < -40 || comet.y > innerHeight+40;
+      if (age > 0.85 || off){
+        comet.live = false;
+        var bx = Math.max(6, Math.min(innerWidth-6, comet.x));
+        var by = Math.max(6, Math.min(innerHeight-6, comet.y));
+        triggerBoom(bx, by, 0.75, 'COMET IMPACT');
+      }
+    }
 
-    /* pass 1: stars + trails into the persistent scene buffer */
+    /* white hole envelope */
+    var wAge = simT - white.t0;
+    var wS = (wAge > 0 && wAge < 4) ? Math.sin(Math.PI * wAge/4) * 0.85 : 0;
+
+    /* survival timer */
+    if (inSurvival && realNow >= survivalEnd){
+      inSurvival = false;
+      var survScore = Math.floor(score - survivalStart);
+      survBtn.classList.remove('on');
+      survBtn.textContent = '⚔ survival';
+      var recordS = survScore > bestSurv;
+      if (recordS){ bestSurv = survScore; try { localStorage.setItem('eh_best_surv', bestSurv); } catch(err){} }
+      showCombo(recordS ? 'NEW SURVIVAL RECORD' : 'TIME UP');
+      flashMsg('<span class="surv">⚔ SURVIVAL SCORE ' + fmt(survScore) + (recordS ? ' · NEW BEST' : ' · BEST ' + fmt(bestSurv)) + '</span>', 4000);
+    }
+    /* high score */
+    if (Math.floor(score) > best){
+      best = Math.floor(score);
+      try { localStorage.setItem('eh_best', best); } catch(err){}
+    }
+
+    /* HUD */
+    if (realNow < hudMsgUntil){
+      if (hud.innerHTML !== hudMsg) hud.innerHTML = hudMsg;
+    } else {
+      var line = '';
+      if (inSurvival) line += '<span class="surv">⚔ ' + Math.ceil((survivalEnd - realNow)/1000) + 's</span> · ';
+      line += 'SCORE ' + fmt(score) + ' · BEST ' + fmt(best);
+      if (act.length > 0) line += ' · <span class="warn">STARS ' + fmt(eaten) + '</span>';
+      if (hud.innerHTML !== line) hud.innerHTML = line;
+    }
+
+    var n0 = act[0] ? toNDC(act[0].x, act[0].y).concat(act[0].s) : [0,0,0];
+    var n1 = act[1] ? toNDC(act[1].x, act[1].y).concat(act[1].s) : [0,0,0];
+    var v0 = act[0] ? toUV(act[0].x, act[0].y).concat(act[0].s) : [0,0,0];
+    var v1 = act[1] ? toUV(act[1].x, act[1].y).concat(act[1].s) : [0,0,0];
+    var wNDC = toNDC(white.x, white.y);
+    var wUV = toUV(white.x, white.y);
+    var cUV = toUV(comet.x, comet.y);
+    var cd = Math.hypot(comet.vx, comet.vy) || 1;
+    var cDir = [comet.vx/cd * aspect, -comet.vy/cd]; /* corrected-space direction */
+    var cdn = Math.hypot(cDir[0], cDir[1]) || 1;
+    cDir = [cDir[0]/cdn, cDir[1]/cdn];
+
+    /* pass 1: stars + trails */
     gl.bindFramebuffer(gl.FRAMEBUFFER, scene.fbo);
     gl.viewport(0, 0, scene.w, scene.h);
     gl.enable(gl.BLEND);
@@ -582,17 +872,19 @@
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
     gl.useProgram(progStars);
     bindStars();
-    gl.uniform1f(US.u_t, tNow);
+    gl.uniform1f(US.u_t, simT);
     gl.uniform2f(US.u_mouse, mouse[0], mouse[1]);
+    gl.uniform2f(US.u_cam, cam[0], cam[1]);
     gl.uniform3f(US.u_bh0, n0[0], n0[1], n0[2]);
     gl.uniform3f(US.u_bh1, n1[0], n1[1], n1[2]);
+    gl.uniform3f(US.u_wh, wNDC[0], wNDC[1], wS);
     gl.uniform4f(US.u_boom, boomNDC[0], boomNDC[1], boomNDC[2], boomNDC[3]);
     gl.uniform1f(US.u_aspect, aspect);
     gl.uniform1f(US.u_dpr, dpr);
     gl.drawArrays(gl.POINTS, 0, TOTAL);
     gl.disable(gl.BLEND);
 
-    /* pass 2: bright-pass + separable blur at quarter res */
+    /* pass 2: bloom */
     gl.useProgram(progBlur);
     gl.uniform1i(UB.u_tex, 0);
     gl.activeTexture(gl.TEXTURE0);
@@ -608,7 +900,7 @@
     gl.uniform1f(UB.u_thresh, 0.0);
     drawQuad();
 
-    /* pass 3: lens + nebula + bloom composite to screen */
+    /* pass 3: composite */
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.viewport(0, 0, cv.width, cv.height);
     gl.useProgram(progPost);
@@ -619,11 +911,14 @@
     gl.activeTexture(gl.TEXTURE0);
     gl.uniform1i(UP.u_scene, 0);
     gl.uniform1i(UP.u_bloom, 1);
-    gl.uniform1f(UP.u_t, tNow);
+    gl.uniform1f(UP.u_t, simT);
     gl.uniform1f(UP.u_aspect, aspect);
     gl.uniform3f(UP.u_bh0, v0[0], v0[1], v0[2]);
     gl.uniform3f(UP.u_bh1, v1[0], v1[1], v1[2]);
+    gl.uniform3f(UP.u_wh, wUV[0], wUV[1], wS);
     gl.uniform4f(UP.u_boom, boomUV[0], boomUV[1], boomUV[2], boomUV[3]);
+    gl.uniform4f(UP.u_comet, cUV[0], cUV[1], cometHeat, 0);
+    gl.uniform2f(UP.u_cometDir, cDir[0], cDir[1]);
     drawQuad();
 
     if (!reduced) requestAnimationFrame(draw);
