@@ -27,34 +27,6 @@
     70%{transform:translate(9px,-7px)} 82%{transform:translate(-5px,4px)}
     100%{transform:translate(0,0) scale(1)}
   }
-  /* black hole overlay: dark core + spinning accretion ring (cloned per finger) */
-  .bh{
-    position:fixed;
-    width:100px;height:100px;
-    margin:-50px 0 0 -50px;
-    border-radius:50%;
-    pointer-events:none;
-    opacity:0;
-    background:radial-gradient(circle,
-      #000 0%, #000 46%,
-      rgba(255,240,220,.95) 52%,
-      rgba(255,140,40,.75) 58%,
-      rgba(255,61,240,.35) 68%,
-      transparent 76%);
-  }
-  .bh::before{
-    content:"";
-    position:absolute;inset:-12%;
-    border-radius:50%;
-    background:conic-gradient(from 0deg,
-      transparent 0deg, rgba(255,220,160,.8) 40deg, transparent 90deg,
-      rgba(120,220,255,.5) 160deg, transparent 220deg,
-      rgba(255,61,240,.6) 300deg, transparent 360deg);
-    -webkit-mask:radial-gradient(circle,transparent 44%,#000 50%,#000 62%,transparent 70%);
-    mask:radial-gradient(circle,transparent 44%,#000 50%,#000 62%,transparent 70%);
-    animation:spin 1.6s linear infinite;
-  }
-  @keyframes spin{to{transform:rotate(360deg)}}
   #dim{position:fixed;inset:0;pointer-events:none;background:#02010a;opacity:0}
   #flash{
     position:fixed;inset:0;pointer-events:none;
@@ -109,7 +81,6 @@
     font-size:clamp(.62rem,1.6vw,.78rem);letter-spacing:.3em;text-transform:uppercase;color:#9d92c4;
   }
   @media (prefers-reduced-motion:reduce){
-    .bh::before{animation:none}
     body.shake #gl,body.shake-mega #gl{animation:none}
     #flash.boom{animation:none}
     #combo.pop{animation:none;opacity:1}
@@ -133,15 +104,16 @@
   if (isTouch) document.getElementById('hint').textContent = 'touch & hold · keep holding to go supermassive · two fingers = two holes';
   document.addEventListener('contextmenu', function(e){ e.preventDefault(); });
   var cv = document.getElementById('gl');
-  var gl = cv.getContext('webgl', {antialias:false, alpha:false, powerPreference:'high-performance'});
+  var gl = cv.getContext('webgl', {antialias:false, alpha:false, depth:false, powerPreference:'high-performance'});
   if (!gl){ document.getElementById('ui').innerHTML = '<h1>WEBGL REQUIRED</h1>'; return; }
 
-  var VS = [
+  /* =============== SHADERS =============== */
+  var STAR_VS = [
     'attribute vec4 a_p;', // radius, angle0, angularSpeed, size
     'attribute vec4 a_s;', // z-offset, warmMix, phase, brightness
     'uniform float u_t;',
     'uniform vec2  u_mouse;',
-    'uniform vec3  u_bh0;',  // x, y (NDC), strength 0..2
+    'uniform vec3  u_bh0;',
     'uniform vec3  u_bh1;',
     'uniform vec4  u_boom;', // x, y (NDC), release time, power
     'uniform float u_aspect;',
@@ -171,7 +143,6 @@
     '  float theta = a_p.y + u_t * a_p.z / (0.35 + r) + r * 3.1;',
     '  vec3 pos = vec3(cos(theta)*r, sin(theta)*r, a_s.x*(0.28 - r*0.12));',
     '  pos.z += 0.018*sin(u_t*0.8 + a_s.z);',
-    /* camera: slow spin + tilt */
     '  float cs = cos(u_t*0.055), sn = sin(u_t*0.055);',
     '  pos = vec3(cs*pos.x + sn*pos.z, pos.y, -sn*pos.x + cs*pos.z);',
     '  float tc = cos(1.02), ts = sin(1.02);',
@@ -181,14 +152,11 @@
     '  ndc.x /= u_aspect;',
     '  float glow = 0.0;',
     '  float fade = 1.0;',
-    /* gentle mouse gravity when no hole is open */
     '  float sTot = u_bh0.z + u_bh1.z;',
     '  vec2 dmm = u_mouse - ndc;',
     '  ndc += dmm * 0.22 * exp(-dot(dmm,dmm)*7.0) * max(1.0 - sTot, 0.0);',
-    /* ---- BLACK HOLES (up to two) ---- */
     '  ndc = applyHole(ndc, u_bh0, a_s.z, fade, glow);',
     '  ndc = applyHole(ndc, u_bh1, a_s.z + 2.1, fade, glow);',
-    /* ---- DETONATION ---- */
     '  float bt = u_t - u_boom.z;',
     '  if (bt > 0.0 && bt < 4.0){',
     '    vec2 db = ndc - u_boom.xy;',
@@ -203,7 +171,6 @@
     '  v_fade = fade;',
     '  gl_Position = vec4(ndc, 0.0, 1.0);',
     '  gl_PointSize = max(a_p.w * (2.4/z) * u_dpr, 1.0);',
-    /* color: white core -> cyan -> magenta -> solar rim */
     '  vec3 cCyan = vec3(0.31,0.88,1.0);',
     '  vec3 cMag  = vec3(1.0,0.24,0.94);',
     '  vec3 cSol  = vec3(1.0,0.69,0.18);',
@@ -211,11 +178,11 @@
     '  col = mix(col, cSol, smoothstep(0.55,1.25,r)*a_s.y);',
     '  col = mix(vec3(1.0,0.98,0.92), col, smoothstep(0.02,0.3,r));',
     '  col = mix(col, vec3(1.0,0.95,0.85), clamp(glow*0.35, 0.0, 1.0));',
-    '  v_color = col * a_s.w;',
+    '  v_color = col * a_s.w * 1.15;',
     '}'
   ].join('\n');
 
-  var FS = [
+  var STAR_FS = [
     'precision mediump float;',
     'varying vec3 v_color;',
     'varying float v_glow;',
@@ -228,20 +195,161 @@
     '}'
   ].join('\n');
 
-  function shader(type, src){
-    var s = gl.createShader(type);
-    gl.shaderSource(s, src); gl.compileShader(s);
-    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw gl.getShaderInfoLog(s);
-    return s;
-  }
-  var prog = gl.createProgram();
-  gl.attachShader(prog, shader(gl.VERTEX_SHADER, VS));
-  gl.attachShader(prog, shader(gl.FRAGMENT_SHADER, FS));
-  gl.linkProgram(prog);
-  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw gl.getProgramInfoLog(prog);
-  gl.useProgram(prog);
+  var QUAD_VS = [
+    'attribute vec2 a_pos;',
+    'varying vec2 v_uv;',
+    'void main(){ v_uv = a_pos*0.5+0.5; gl_Position = vec4(a_pos, 0.0, 1.0); }'
+  ].join('\n');
 
-  /* ---- build the galaxy ---- */
+  /* trail fade: translucent dark quad drawn over the persistent scene buffer */
+  var FADE_FS = [
+    'precision mediump float;',
+    'void main(){ gl_FragColor = vec4(0.0, 0.0, 0.0, 0.34); }'
+  ].join('\n');
+
+  /* separable gaussian blur with optional bright-pass threshold */
+  var BLUR_FS = [
+    'precision mediump float;',
+    'varying vec2 v_uv;',
+    'uniform sampler2D u_tex;',
+    'uniform vec2 u_dir;',   // texel-space step
+    'uniform float u_thresh;',
+    'vec3 tap(vec2 uv){',
+    '  vec3 c = texture2D(u_tex, uv).rgb;',
+    '  return u_thresh > 0.0 ? max(c - u_thresh, 0.0) * 1.7 : c;',
+    '}',
+    'void main(){',
+    '  vec3 c = tap(v_uv) * 0.227;',
+    '  c += (tap(v_uv + u_dir*1.385) + tap(v_uv - u_dir*1.385)) * 0.316;',
+    '  c += (tap(v_uv + u_dir*3.231) + tap(v_uv - u_dir*3.231)) * 0.070;',
+    '  gl_FragColor = vec4(c, 1.0);',
+    '}'
+  ].join('\n');
+
+  /* final composite: nebula + lensed scene + bloom + photon rings + shock refraction */
+  var POST_FS = [
+    'precision highp float;',
+    'varying vec2 v_uv;',
+    'uniform sampler2D u_scene;',
+    'uniform sampler2D u_bloom;',
+    'uniform float u_t;',
+    'uniform float u_aspect;',
+    'uniform vec3 u_bh0;',   // uv x, uv y, strength
+    'uniform vec3 u_bh1;',
+    'uniform vec4 u_boom;',  // uv x, uv y, time, power
+    'float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453123); }',
+    'float noise(vec2 p){',
+    '  vec2 i = floor(p), f = fract(p);',
+    '  f = f*f*(3.0-2.0*f);',
+    '  return mix(mix(hash(i), hash(i+vec2(1,0)), f.x),',
+    '             mix(hash(i+vec2(0,1)), hash(i+vec2(1,1)), f.x), f.y);',
+    '}',
+    'float fbm(vec2 p){',
+    '  float v = 0.0, a = 0.5;',
+    '  for (int i=0;i<4;i++){ v += a*noise(p); p = p*2.03 + 11.7; a *= 0.5; }',
+    '  return v;',
+    '}',
+    'vec2 corr(vec2 uv){ return vec2(uv.x*u_aspect, uv.y); }',
+    'vec2 clampUV(vec2 uv){ return clamp(uv, vec2(0.001), vec2(0.999)); }',
+    'void hole(vec3 bh, inout vec2 suv, inout float dark, inout vec3 ringCol){',
+    '  float s = bh.z;',
+    '  if (s < 0.003) return;',
+    '  vec2 hc = corr(bh.xy);',
+    '  vec2 d = corr(suv) - hc;',
+    '  float r = length(d) + 0.00001;',
+    '  float h = (0.035 + 0.095*s) * 0.5;',
+    /* frame dragging: swirl the sampled space around the hole */
+    '  float ang = 0.55 * (h*h) / (r*r + h*h*0.2);',
+    '  float ca = cos(ang), sa = sin(ang);',
+    '  d = mat2(ca,-sa,sa,ca) * d;',
+    /* gravitational deflection: background squeezed toward the photon ring */
+    '  float defl = h*h*1.6 / max(r*r, h*h*0.28);',
+    '  vec2 sc = hc + d * (1.0 + defl);',
+    '  suv = vec2(sc.x / u_aspect, sc.y);',
+    /* event horizon */
+    '  dark = max(dark, smoothstep(h*1.05, h*0.90, r));',
+    /* photon ring: thin white-hot inner ring + warm halo */
+    '  float ring = exp(-pow((r - h*1.10)/(h*0.13), 2.0));',
+    '  ringCol += ring * min(s,1.4) * vec3(1.0, 0.92, 0.78) * 1.5;',
+    '  ringCol += exp(-pow((r - h*1.45)/(h*0.55), 2.0)) * min(s,1.4) * vec3(0.95, 0.35, 0.65) * 0.4;',
+    '  ringCol += exp(-pow((r - h*2.1)/(h*1.1), 2.0)) * min(s,1.4) * vec3(0.25, 0.5, 0.9) * 0.22;',
+    '}',
+    'void main(){',
+    '  vec2 suv = v_uv;',
+    '  float dark = 0.0;',
+    '  vec3 ringCol = vec3(0.0);',
+    '  hole(u_bh0, suv, dark, ringCol);',
+    '  hole(u_bh1, suv, dark, ringCol);',
+    /* expanding shock refraction ring */
+    '  float bt = u_t - u_boom.z;',
+    '  if (bt > 0.0 && bt < 3.2){',
+    '    vec2 d = corr(v_uv) - corr(u_boom.xy);',
+    '    float r = length(d) + 0.00001;',
+    '    float w = bt * (0.26 + 0.13*u_boom.w);',
+    '    float g = exp(-pow((r - w)/0.045, 2.0));',
+    '    float decay = 1.0 - bt/3.2;',
+    '    vec2 shift = (d/r) * g * 0.035 * u_boom.w * decay;',
+    '    suv -= vec2(shift.x / u_aspect, shift.y);',
+    '    ringCol += g * decay * u_boom.w * vec3(1.0, 0.8, 0.55) * 0.55;',
+    '  }',
+    /* chromatic aberration along the total distortion vector */
+    '  vec2 dvec = suv - v_uv;',
+    '  vec3 scene;',
+    '  scene.r = texture2D(u_scene, clampUV(v_uv + dvec*1.06)).r;',
+    '  scene.g = texture2D(u_scene, clampUV(suv)).g;',
+    '  scene.b = texture2D(u_scene, clampUV(v_uv + dvec*0.94)).b;',
+    /* clip the 8-bit trail residue that never fully decays */
+    '  scene = max(scene - 0.025, 0.0) * 1.03;',
+    '  vec3 bloom = texture2D(u_bloom, clampUV(suv)).rgb;',
+    /* animated nebula behind everything */
+    '  vec2 np = corr(suv);',
+    '  float n1 = fbm(np*2.6 + u_t*0.010);',
+    '  float n2 = fbm(np*4.8 - u_t*0.007 + 7.3);',
+    '  vec3 neb = vec3(0.050,0.030,0.105)*n1*n1*2.1',
+    '           + vec3(0.105,0.022,0.125)*n2*n2*n1*1.5',
+    '           + vec3(0.012,0.030,0.070)*n2*0.8;',
+    /* faint pin stars in the deep background */
+    '  float sp = hash(floor(np*240.0));',
+    '  neb += vec3(0.8) * step(0.9985, sp) * (0.3 + 0.7*fract(sp*77.7)) * (0.4 + 0.6*sin(u_t*2.0 + sp*40.0));',
+    '  float lit = 1.0 - dark;',
+    '  vec3 col = neb*lit + scene*lit + bloom*lit*1.25 + ringCol;',
+    /* vignette + filmic-ish tonemap */
+    '  vec2 vc = v_uv - 0.5;',
+    '  col *= 1.0 - 0.55*dot(vc,vc)*1.6;',
+    '  col = 1.0 - exp(-col*1.4);',
+    '  gl_FragColor = vec4(col, 1.0);',
+    '}'
+  ].join('\n');
+
+  function compile(vsSrc, fsSrc, attribs){
+    function sh(type, src){
+      var s = gl.createShader(type);
+      gl.shaderSource(s, src); gl.compileShader(s);
+      if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw gl.getShaderInfoLog(s);
+      return s;
+    }
+    var p = gl.createProgram();
+    gl.attachShader(p, sh(gl.VERTEX_SHADER, vsSrc));
+    gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fsSrc));
+    for (var name in attribs) gl.bindAttribLocation(p, attribs[name], name);
+    gl.linkProgram(p);
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw gl.getProgramInfoLog(p);
+    return p;
+  }
+  var progStars = compile(STAR_VS, STAR_FS, {a_p:0, a_s:1});
+  var progFade  = compile(QUAD_VS, FADE_FS, {a_pos:0});
+  var progBlur  = compile(QUAD_VS, BLUR_FS, {a_pos:0});
+  var progPost  = compile(QUAD_VS, POST_FS, {a_pos:0});
+  function uniforms(prog, names){
+    var o = {};
+    names.forEach(function(n){ o[n] = gl.getUniformLocation(prog, n); });
+    return o;
+  }
+  var US = uniforms(progStars, ['u_t','u_mouse','u_bh0','u_bh1','u_boom','u_aspect','u_dpr']);
+  var UB = uniforms(progBlur, ['u_tex','u_dir','u_thresh']);
+  var UP = uniforms(progPost, ['u_scene','u_bloom','u_t','u_aspect','u_bh0','u_bh1','u_boom']);
+
+  /* =============== GEOMETRY =============== */
   /* phones get a lighter star field so it stays at 60fps */
   var small = Math.min(screen.width, screen.height) < 600;
   var N = small ? 55000 : 120000;
@@ -275,42 +383,67 @@
     S[g*4+2] = Math.random()*6.2831853;
     S[g*4+3] = 0.045;
   }
-  function attach(name, data){
-    var buf = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
-    gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
-    var loc = gl.getAttribLocation(prog, name);
-    gl.enableVertexAttribArray(loc);
-    gl.vertexAttribPointer(loc, 4, gl.FLOAT, false, 0, 0);
+  var bufP = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, bufP);
+  gl.bufferData(gl.ARRAY_BUFFER, P, gl.STATIC_DRAW);
+  var bufS = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, bufS);
+  gl.bufferData(gl.ARRAY_BUFFER, S, gl.STATIC_DRAW);
+  var quadBuf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+  gl.enableVertexAttribArray(0);
+  gl.enableVertexAttribArray(1);
+
+  function bindStars(){
+    gl.bindBuffer(gl.ARRAY_BUFFER, bufP);
+    gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 0, 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, bufS);
+    gl.vertexAttribPointer(1, 4, gl.FLOAT, false, 0, 0);
   }
-  attach('a_p', P);
-  attach('a_s', S);
+  function drawQuad(){
+    gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  }
 
-  var U = {};
-  ['u_t','u_mouse','u_bh0','u_bh1','u_boom','u_aspect','u_dpr'].forEach(function(n){ U[n] = gl.getUniformLocation(prog, n); });
-
-  gl.enable(gl.BLEND);
-  gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
-  gl.clearColor(0.02, 0.012, 0.055, 1);
-
+  /* =============== FRAMEBUFFERS =============== */
+  function makeTarget(w, h){
+    var tex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    var fbo = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    return { fbo: fbo, tex: tex, w: w, h: h };
+  }
+  var scene = null, bloomA = null, bloomB = null;
   var dpr = Math.min(devicePixelRatio || 1, 2);
   function size(){
-    cv.width = innerWidth * dpr;
-    cv.height = innerHeight * dpr;
-    gl.viewport(0, 0, cv.width, cv.height);
-    gl.uniform1f(U.u_aspect, innerWidth/innerHeight);
-    gl.uniform1f(U.u_dpr, dpr);
+    var w = Math.max(2, Math.floor(innerWidth * dpr));
+    var h = Math.max(2, Math.floor(innerHeight * dpr));
+    cv.width = w; cv.height = h;
+    scene  = makeTarget(w, h);
+    bloomA = makeTarget(w>>2, h>>2);
+    bloomB = makeTarget(w>>2, h>>2);
   }
   size();
   addEventListener('resize', size);
 
-  /* ---- input: up to two simultaneous black holes ---- */
+  /* =============== INPUT: up to two black holes =============== */
   function toNDC(x, y){ return [(x/innerWidth)*2-1, -((y/innerHeight)*2-1)]; }
+  function toUV(x, y){ return [x/innerWidth, 1 - y/innerHeight]; }
   var mouse = [10, 10];
-  var holes = {};            /* pointerId -> {x, y, s, el} */
+  var holes = {};            /* pointerId -> {x, y, s} */
   function holeCount(){ return Object.keys(holes).length; }
 
-  var boom = [0, 0, -1000, 1];
+  var boomNDC = [0, 0, -1000, 1];
+  var boomUV = [0, 0, -1000, 1];
   var eaten = 0;
   var flash = document.getElementById('flash');
   var dim = document.getElementById('dim');
@@ -319,7 +452,7 @@
   var combo = document.getElementById('combo');
   function fmt(n){ return Math.floor(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g,','); }
 
-  /* ---- synthesized audio (created on first gesture) ---- */
+  /* ---- synthesized audio ---- */
   var AC = null, rumbleGain = null, rumbleLP = null, noiseBuf = null;
   function ensureAudio(){
     if (AC) return;
@@ -358,18 +491,11 @@
     } catch(e){}
   }
 
-  function makeBHEl(){
-    var el = document.createElement('div');
-    el.className = 'bh';
-    document.body.appendChild(el);
-    return el;
-  }
-
   addEventListener('pointerdown', function(e){
     e.preventDefault();
     mouse = toNDC(e.clientX, e.clientY);
     if (holeCount() >= 2) return;
-    holes[e.pointerId] = { x: e.clientX, y: e.clientY, s: 0, el: makeBHEl() };
+    holes[e.pointerId] = { x: e.clientX, y: e.clientY, s: 0 };
     ensureAudio();
     if (AC && AC.state === 'suspended') AC.resume();
   });
@@ -390,10 +516,11 @@
     var h = holes[e.pointerId];
     if (!h) return;
     delete holes[e.pointerId];
-    h.el.remove();
     if (h.s > 0.08){
       var ndc = toNDC(h.x, h.y);
-      boom = [ndc[0], ndc[1], tNow, Math.min(h.s, 2)];
+      var uv = toUV(h.x, h.y);
+      boomNDC = [ndc[0], ndc[1], tNow, Math.min(h.s, 2)];
+      boomUV  = [uv[0], uv[1], tNow, Math.min(h.s, 2)];
       flash.style.setProperty('--fx', (h.x/innerWidth*100)+'%');
       flash.style.setProperty('--fy', (h.y/innerHeight*100)+'%');
       flash.classList.remove('boom'); void flash.offsetWidth; flash.classList.add('boom');
@@ -414,34 +541,25 @@
 
   setTimeout(function(){ document.getElementById('ui').classList.add('faded'); }, 6000);
 
+  /* =============== RENDER LOOP =============== */
   var t0 = null, tNow = 0, lastTs = 0;
   function draw(ts){
     if (t0 === null){ t0 = ts; lastTs = ts; }
     var dt = Math.min(0.05, (ts - lastTs)/1000); lastTs = ts;
     tNow = (ts - t0)/1000;
+    var aspect = innerWidth/innerHeight;
 
-    /* grow held holes: ~2.5s to full, then slow supermassive creep to 2x */
+    /* grow held holes */
     var list = [];
     var sTot = 0, sMax = 0;
     for (var id in holes){
       var h = holes[id];
-      h.s += (h.s < 1 ? dt*0.55*(1.8 - h.s) : dt*0.16) ;
+      h.s += (h.s < 1 ? dt*0.55*(1.8 - h.s) : dt*0.16);
       if (h.s > 2) h.s = 2;
       sTot += h.s; if (h.s > sMax) sMax = h.s;
       eaten = Math.min(N, eaten + dt * 9000 * h.s * h.s);
-      /* overlay disk: size, opacity, hue shift as it grows */
-      var horizonNDC = 0.035 + 0.095*h.s;
-      var diamPx = horizonNDC * innerHeight * 2.4;
-      h.el.style.opacity = Math.min(1, h.s*2.2);
-      h.el.style.left = h.x + 'px';
-      h.el.style.top = h.y + 'px';
-      h.el.style.transform = 'scale(' + (diamPx/100) + ')';
-      h.el.style.filter =
-        'hue-rotate(' + (Math.max(h.s-1,0)*140) + 'deg)' +
-        ' drop-shadow(0 0 30px rgba(255,140,40,.7)) drop-shadow(0 0 80px rgba(255,61,240,.4))';
-      list.push([h.x, h.y, h.s]);
+      list.push(h);
     }
-    /* supermassive holes dim the rest of the universe */
     dim.style.opacity = Math.max(0, Math.min(0.55, (sMax - 0.9) * 0.6));
     if (rumbleGain){
       rumbleGain.gain.value = Math.min(0.55, sTot * 0.35);
@@ -449,15 +567,65 @@
     }
     if (countEl && holeCount() > 0) countEl.textContent = fmt(eaten);
 
-    var b0 = list[0] ? toNDC(list[0][0], list[0][1]).concat(list[0][2]) : [0,0,0];
-    var b1 = list[1] ? toNDC(list[1][0], list[1][1]).concat(list[1][2]) : [0,0,0];
-    gl.uniform1f(U.u_t, tNow);
-    gl.uniform2f(U.u_mouse, mouse[0], mouse[1]);
-    gl.uniform3f(U.u_bh0, b0[0], b0[1], b0[2]);
-    gl.uniform3f(U.u_bh1, b1[0], b1[1], b1[2]);
-    gl.uniform4f(U.u_boom, boom[0], boom[1], boom[2], boom[3]);
-    gl.clear(gl.COLOR_BUFFER_BIT);
+    var n0 = list[0] ? toNDC(list[0].x, list[0].y).concat(list[0].s) : [0,0,0];
+    var n1 = list[1] ? toNDC(list[1].x, list[1].y).concat(list[1].s) : [0,0,0];
+    var v0 = list[0] ? toUV(list[0].x, list[0].y).concat(list[0].s) : [0,0,0];
+    var v1 = list[1] ? toUV(list[1].x, list[1].y).concat(list[1].s) : [0,0,0];
+
+    /* pass 1: stars + trails into the persistent scene buffer */
+    gl.bindFramebuffer(gl.FRAMEBUFFER, scene.fbo);
+    gl.viewport(0, 0, scene.w, scene.h);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.useProgram(progFade);
+    drawQuad();
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+    gl.useProgram(progStars);
+    bindStars();
+    gl.uniform1f(US.u_t, tNow);
+    gl.uniform2f(US.u_mouse, mouse[0], mouse[1]);
+    gl.uniform3f(US.u_bh0, n0[0], n0[1], n0[2]);
+    gl.uniform3f(US.u_bh1, n1[0], n1[1], n1[2]);
+    gl.uniform4f(US.u_boom, boomNDC[0], boomNDC[1], boomNDC[2], boomNDC[3]);
+    gl.uniform1f(US.u_aspect, aspect);
+    gl.uniform1f(US.u_dpr, dpr);
     gl.drawArrays(gl.POINTS, 0, TOTAL);
+    gl.disable(gl.BLEND);
+
+    /* pass 2: bright-pass + separable blur at quarter res */
+    gl.useProgram(progBlur);
+    gl.uniform1i(UB.u_tex, 0);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, scene.tex);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, bloomA.fbo);
+    gl.viewport(0, 0, bloomA.w, bloomA.h);
+    gl.uniform2f(UB.u_dir, 1.4/bloomA.w, 0);
+    gl.uniform1f(UB.u_thresh, 0.30);
+    drawQuad();
+    gl.bindTexture(gl.TEXTURE_2D, bloomA.tex);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, bloomB.fbo);
+    gl.uniform2f(UB.u_dir, 0, 1.4/bloomA.h);
+    gl.uniform1f(UB.u_thresh, 0.0);
+    drawQuad();
+
+    /* pass 3: lens + nebula + bloom composite to screen */
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, cv.width, cv.height);
+    gl.useProgram(progPost);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, scene.tex);
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, bloomB.tex);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.uniform1i(UP.u_scene, 0);
+    gl.uniform1i(UP.u_bloom, 1);
+    gl.uniform1f(UP.u_t, tNow);
+    gl.uniform1f(UP.u_aspect, aspect);
+    gl.uniform3f(UP.u_bh0, v0[0], v0[1], v0[2]);
+    gl.uniform3f(UP.u_bh1, v1[0], v1[1], v1[2]);
+    gl.uniform4f(UP.u_boom, boomUV[0], boomUV[1], boomUV[2], boomUV[3]);
+    drawQuad();
+
     if (!reduced) requestAnimationFrame(draw);
   }
   if (reduced){ draw(8000); } else { requestAnimationFrame(draw); }
