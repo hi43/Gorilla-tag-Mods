@@ -163,7 +163,7 @@ function toggleMute(){ muted = !muted; document.getElementById('mutebtn').textCo
 /* ============================== SETUP ============================== */
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 let W = 0, H = 0, DPR = 1;
-function resize(){ DPR = Math.min(devicePixelRatio || 1, 2); W = innerWidth; H = innerHeight; cv.width = W * DPR; cv.height = H * DPR; }
+function resize(){ DPR = Math.min(devicePixelRatio || 1, 2); W = innerWidth; H = innerHeight; cv.width = W * DPR; cv.height = H * DPR; cv.style.width = W + 'px'; cv.style.height = H + 'px'; }
 addEventListener('resize', resize); resize();
 
 const keys = {};
