@@ -1,9 +1,10 @@
 <title>PLANET DESTROYER</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <style>
   :root{ --cy:#4de3ff; --mg:#ff4dd2; --am:#ffb84d; }
   html,body{ margin:0; padding:0; height:100%; overflow:hidden; background:#03040a; font-family:'Segoe UI',system-ui,sans-serif; user-select:none; }
-  #c{ position:fixed; inset:0; display:block; cursor:none; }
+  #c{ position:fixed; inset:0; display:block; cursor:none; touch-action:none; }
+  body.touch #c{ cursor:default; }
   .hud{ position:fixed; color:#cfefff; text-shadow:0 0 6px rgba(77,227,255,.6); z-index:5; pointer-events:none; }
   #stats{ top:14px; left:16px; font-size:15px; line-height:1.55; }
   #stats b{ color:var(--am); font-size:18px; }
@@ -35,11 +36,30 @@
   .buy:hover{ background:rgba(255,184,77,.35); }
   .buy.no{ opacity:.35; cursor:default; }
   .kbd{ background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.25); border-radius:4px; padding:0 6px; font-family:monospace; font-size:12px; }
-  #banner{ position:fixed; left:50%; top:34%; transform:translate(-50%,-50%); text-align:center; z-index:15; display:none; }
+  #banner{ position:fixed; left:50%; top:34%; transform:translate(-50%,-50%); text-align:center; z-index:15; display:none; pointer-events:none; }
+  #banner .btn{ pointer-events:auto; font-size:16px; padding:10px 22px; margin-top:8px; }
   #banner h1{ color:var(--am); font-size:42px; letter-spacing:6px; margin:0; text-shadow:0 0 24px rgba(255,184,77,.8); animation:pulse 1.2s infinite; }
   #banner p{ color:#cfefff; font-size:16px; letter-spacing:2px; }
   @keyframes pulse{ 50%{ opacity:.55; } }
   #vignette{ position:fixed; inset:0; pointer-events:none; z-index:3; background:radial-gradient(ellipse at center, transparent 62%, rgba(0,0,10,.55) 100%); }
+  #touchui{ display:none; }
+  body.touch #touchui{ display:block; }
+  .tbtn{ width:64px; height:64px; border-radius:50%; background:rgba(10,25,45,.7); border:2px solid rgba(77,227,255,.45); color:#cfefff; font-size:24px; display:flex; align-items:center; justify-content:center; z-index:6; touch-action:none; user-select:none; -webkit-user-select:none; }
+  #boostbtn{ position:fixed; right:20px; bottom:230px; width:72px; height:72px; font-size:30px; }
+  #zoomcol{ position:fixed; right:20px; top:66px; display:flex; flex-direction:column; gap:10px; z-index:6; }
+  #zoomcol .tbtn{ width:44px; height:44px; font-size:20px; }
+  @media (max-width:760px){
+    .slot{ width:38px; height:38px; border-radius:9px; }
+    .slot .ic{ font-size:17px; }
+    .slot .nm{ display:none; }
+    .slot .lk{ font-size:8px; }
+    .slot .key{ font-size:8px; top:1px; left:3px; }
+    #hotbar{ gap:4px; bottom:10px; }
+    #barwrap{ width:230px; bottom:62px; }
+    #stats{ font-size:12px; }
+    #banner h1{ font-size:26px; letter-spacing:3px; }
+    #banner p{ font-size:13px; }
+  }
 </style>
 
 <canvas id="c"></canvas>
@@ -61,6 +81,7 @@
   <p style="font-size:13px;color:#8fb8d8">Shatter every planet in the system, harvest the cosmic dust, buy bigger toys, warp deeper. The universe won't demolish itself.</p>
   <h3>CONTROLS</h3>
   <div class="row"><span>Move ship</span><span><span class="kbd">W</span> <span class="kbd">A</span> <span class="kbd">S</span> <span class="kbd">D</span></span></div>
+  <div class="row"><span>📱 Touch: left thumb = joystick, right thumb = aim &amp; fire. 🔥 button = boost.</span></div>
   <div class="row"><span>Afterburner (drains energy)</span><span class="kbd">SHIFT</span></div>
   <div class="row"><span>Aim / Fire gadget</span><span>Mouse / <span class="kbd">LMB</span></span></div>
   <div class="row"><span>Select gadget</span><span><span class="kbd">1</span>–<span class="kbd">8</span> or click hotbar</span></div>
@@ -73,6 +94,10 @@
   <p style="text-align:center"><button class="btn" onclick="toggleHelp()">CLOSE</button></p>
 </div>
 <div id="banner"></div>
+<div id="touchui">
+  <div class="tbtn" id="boostbtn">🔥</div>
+  <div id="zoomcol"><div class="tbtn" id="zin">＋</div><div class="tbtn" id="zout">−</div></div>
+</div>
 
 <script>
 'use strict';
@@ -369,11 +394,13 @@ function update(dt){
     if (keys['KeyS'] || keys['ArrowDown']) ay += 1;
     if (keys['KeyA'] || keys['ArrowLeft']) ax -= 1;
     if (keys['KeyD'] || keys['ArrowRight']) ax += 1;
+    ax += joy.dx; ay += joy.dy;
+    const mag = Math.hypot(ax, ay);
     let pow = thrustPow();
-    const boosting = (keys['ShiftLeft'] || keys['ShiftRight']) && (ax || ay) && ship.energy > 1;
-    if (boosting){ pow *= 2.1; ship.energy = Math.max(0, ship.energy - 16 * dt); }
-    if (ax || ay){ const l = Math.hypot(ax, ay); ship.vx += ax / l * pow * dt; ship.vy += ay / l * pow * dt;
-      if (Math.random() < 0.6) particles.push({ x: ship.x - Math.cos(ship.angle) * 14, y: ship.y - Math.sin(ship.angle) * 14, vx: -ax / l * 160 + rand(-40, 40), vy: -ay / l * 160 + rand(-40, 40), life: 0.4, maxLife: 0.4, size: boosting ? 5 : 3, hue: boosting ? 20 : 195 });
+    const boosting = (keys['ShiftLeft'] || keys['ShiftRight'] || touchBoost) && mag > 0.05 && ship.energy > 1;
+    if (boosting){ pow *= 2.1; ship.energy = Math.max(0, ship.energy - (regenRate() + 14) * dt); }
+    if (mag > 0.05){ const s = Math.min(mag, 1); ship.vx += ax / mag * pow * s * dt; ship.vy += ay / mag * pow * s * dt;
+      if (Math.random() < 0.6) particles.push({ x: ship.x - Math.cos(ship.angle) * 14, y: ship.y - Math.sin(ship.angle) * 14, vx: -ax / mag * 160 + rand(-40, 40), vy: -ay / mag * 160 + rand(-40, 40), life: 0.4, maxLife: 0.4, size: boosting ? 5 : 3, hue: boosting ? 20 : 195 });
     }
     ship.vx -= ship.vx * 1.4 * dt; ship.vy -= ship.vy * 1.4 * dt;
     const sp = Math.hypot(ship.vx, ship.vy), maxSp = boosting ? 1250 : 720;
@@ -537,7 +564,8 @@ function update(dt){
   for (let i = planets.length - 1; i >= 0; i--){
     if (planets[i].dead){ destroyPlanet(planets[i]); planets.splice(i, 1); }
   }
-  if (planets.length === 0 && !ship.dead) showBanner('SYSTEM ' + systemNum + ' OBLITERATED', 'Press ENTER to warp to the next system — planets get tougher, dust gets richer');
+  if (planets.length === 0 && !ship.dead && bannerEl.style.display !== 'block')
+    showBanner('SYSTEM ' + systemNum + ' OBLITERATED', 'Next system: tougher planets, richer dust', '<button class="btn" onclick="doWarp()">🚀 WARP NOW (ENTER)</button>');
 
   // camera
   cam.zoom = lerp(cam.zoom, cam.tzoom, 1 - Math.pow(0.001, dt));
@@ -777,6 +805,14 @@ function render(){
   // minimap
   drawMinimap();
 
+  // virtual joystick
+  if (joy.id !== null){
+    ctx.strokeStyle = 'rgba(120,230,255,0.45)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(joy.ox, joy.oy, 56, 0, TAU); ctx.stroke();
+    ctx.fillStyle = 'rgba(120,230,255,0.35)';
+    ctx.beginPath(); ctx.arc(joy.ox + joy.dx * 48, joy.oy + joy.dy * 48, 26, 0, TAU); ctx.fill();
+  }
+
   // crosshair
   ctx.save(); ctx.translate(mouseX, mouseY);
   ctx.strokeStyle = 'rgba(120,230,255,0.9)'; ctx.lineWidth = 1.6;
@@ -911,7 +947,8 @@ function updateHud(){
     el.style.height = (g2.cd > 0 ? clamp(g2.timer / g2.cd, 0, 1) * 100 : 0) + '%';
   });
 }
-function showBanner(h, p){ bannerEl.innerHTML = '<h1>' + h + '</h1><p>' + p + '</p>'; bannerEl.style.display = 'block'; }
+function showBanner(h, p, extra){ bannerEl.innerHTML = '<h1>' + h + '</h1><p>' + p + '</p>' + (extra || ''); bannerEl.style.display = 'block'; }
+window.doWarp = () => { if (planets.length === 0 && !ship.dead) warp(); };
 function hideBanner(){ bannerEl.style.display = 'none'; }
 
 function openShop(){ shopOpen = true; helpOpen = false; helpEl.style.display = 'none'; renderShop(); shopEl.style.display = 'block'; paused = true; }
@@ -968,11 +1005,52 @@ addEventListener('keydown', e => {
   }
 });
 addEventListener('keyup', e => { keys[e.code] = false; });
-cv.addEventListener('mousemove', e => { mouseX = e.clientX; mouseY = e.clientY; });
-cv.addEventListener('mousedown', e => { if (e.button === 0){ mouseDown = true; ac(); } });
-addEventListener('mouseup', e => { if (e.button === 0) mouseDown = false; });
+
+// pointer input: mouse aims/fires as before; on touch, the lower-left zone is a
+// virtual joystick and any other touch aims + fires while held
+const isTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
+if (isTouch) document.body.classList.add('touch');
+const joy = { id: null, ox: 0, oy: 0, dx: 0, dy: 0 };
+let aimId = null, touchBoost = false;
+cv.addEventListener('pointerdown', e => {
+  e.preventDefault(); ac();
+  try { cv.setPointerCapture(e.pointerId); } catch (_) {}
+  if (e.pointerType === 'mouse'){
+    if (e.button === 0) mouseDown = true;
+    mouseX = e.clientX; mouseY = e.clientY;
+    return;
+  }
+  if (joy.id === null && e.clientX < W * 0.42 && e.clientY > H * 0.4){
+    joy.id = e.pointerId; joy.ox = e.clientX; joy.oy = e.clientY; joy.dx = joy.dy = 0;
+    return;
+  }
+  aimId = e.pointerId; mouseX = e.clientX; mouseY = e.clientY; mouseDown = true;
+});
+cv.addEventListener('pointermove', e => {
+  if (e.pointerId === joy.id){
+    let dx = (e.clientX - joy.ox) / 56, dy = (e.clientY - joy.oy) / 56;
+    const l = Math.hypot(dx, dy);
+    if (l > 1){ dx /= l; dy /= l; }
+    joy.dx = dx; joy.dy = dy;
+    return;
+  }
+  if (e.pointerType === 'mouse' || e.pointerId === aimId){ mouseX = e.clientX; mouseY = e.clientY; }
+});
+function endPointer(e){
+  if (e.pointerId === joy.id){ joy.id = null; joy.dx = joy.dy = 0; return; }
+  if (e.pointerType === 'mouse'){ if (e.button === 0) mouseDown = false; return; }
+  if (e.pointerId === aimId){ aimId = null; mouseDown = false; }
+}
+cv.addEventListener('pointerup', endPointer);
+cv.addEventListener('pointercancel', endPointer);
 addEventListener('wheel', e => { cam.tzoom = clamp(cam.tzoom * (e.deltaY > 0 ? 0.88 : 1.14), 0.3, 1.7); e.preventDefault(); }, { passive: false });
 cv.addEventListener('contextmenu', e => e.preventDefault());
+const boostBtn = document.getElementById('boostbtn');
+boostBtn.addEventListener('pointerdown', e => { e.preventDefault(); ac(); touchBoost = true; });
+addEventListener('pointerup', () => { touchBoost = false; });
+addEventListener('pointercancel', () => { touchBoost = false; });
+document.getElementById('zin').addEventListener('click', () => { cam.tzoom = clamp(cam.tzoom * 1.25, 0.3, 1.7); });
+document.getElementById('zout').addEventListener('click', () => { cam.tzoom = clamp(cam.tzoom * 0.8, 0.3, 1.7); });
 
 /* ============================== MAIN ============================== */
 spawnSystem(1);
