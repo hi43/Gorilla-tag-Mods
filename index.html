@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FABLE 5 · Galaxy Lab</title>
+<style>
+  :root{
+    --void:#0a0714; --panel:#171030; --line:#2b2150;
+    --ink:#eee9ff; --dim:#9d92c4;
+    --cyan:#4ee1ff; --mag:#ff3df0; --sol:#ffb02e;
+    --mono:ui-monospace,'SF Mono','Cascadia Mono',Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:var(--void);
+    color:var(--ink);
+    font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+    min-height:100vh;
+    background-image:
+      radial-gradient(ellipse 80% 50% at 50% -10%, rgba(78,225,255,.08), transparent),
+      radial-gradient(ellipse 60% 40% at 80% 110%, rgba(255,61,240,.07), transparent);
+  }
+  header{
+    text-align:center;
+    padding:14vh 1.5rem 8vh;
+  }
+  .eyebrow{
+    font-family:var(--mono);
+    font-size:.7rem;letter-spacing:.42em;text-transform:uppercase;
+    color:var(--cyan);
+    margin-bottom:1.2rem;
+  }
+  h1{
+    font-size:clamp(2.4rem,8vw,5rem);
+    font-weight:900;letter-spacing:-.02em;line-height:1;
+    background:linear-gradient(100deg,var(--cyan) 5%,#c17bff 40%,var(--mag) 70%,var(--sol) 100%);
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+    filter:drop-shadow(0 0 30px rgba(255,61,240,.3));
+  }
+  header p{
+    margin-top:1.2rem;
+    color:var(--dim);
+    font-size:clamp(.95rem,2.4vw,1.1rem);
+    max-width:42ch;margin-left:auto;margin-right:auto;line-height:1.6;
+  }
+  main{
+    max-width:1080px;margin:0 auto;
+    padding:0 1.5rem 10vh;
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
+    gap:1.4rem;
+  }
+  .card{
+    border:1px solid var(--line);
+    border-radius:8px;
+    overflow:hidden;
+    background:linear-gradient(170deg,var(--panel),#0d0920);
+    display:flex;flex-direction:column;
+    text-decoration:none;color:inherit;
+    transition:transform .25s ease, border-color .25s ease;
+  }
+  .card:hover{transform:translateY(-4px);border-color:var(--mag)}
+  .card img{width:100%;aspect-ratio:16/10;object-fit:cover;display:block}
+  .card-body{padding:1.3rem 1.3rem 1.5rem;display:flex;flex-direction:column;gap:.6rem;flex:1}
+  .card h2{
+    font-family:var(--mono);
+    font-size:1rem;letter-spacing:.3em;text-transform:uppercase;
+    font-weight:700;
+  }
+  .card h2 .dot{color:var(--sol)}
+  .card p{color:var(--dim);font-size:.9rem;line-height:1.6;flex:1}
+  .play{
+    font-family:var(--mono);
+    font-size:.75rem;letter-spacing:.25em;text-transform:uppercase;
+    color:var(--cyan);
+  }
+  .card:hover .play{color:var(--mag)}
+  footer{
+    text-align:center;
+    padding:0 1.5rem 6vh;
+    font-family:var(--mono);
+    font-size:.7rem;letter-spacing:.2em;text-transform:uppercase;
+    color:#5c5480;
+    line-height:2;
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="eyebrow">FABLE 5 · GALAXY LAB</div>
+  <h1>Break a galaxy<br>on your phone.</h1>
+  <p>Three interactive space toys built with WebGL — gravitational lensing, 120,000 GPU stars, and detonations you can feel. No install, works offline.</p>
+</header>
+
+<main>
+  <a class="card" href="fable-blackhole.html">
+    <img src="preview-blackhole.png" alt="A black hole with a glowing accretion ring devouring a spiral galaxy">
+    <div class="card-body">
+      <h2>Event Horizon <span class="dot">●</span></h2>
+      <p>The main event. Hold to open a black hole that bends light around itself. Grow it supermassive, merge two together, fire star comets, open white holes, hunt neutron stars — then detonate it all for score.</p>
+      <span class="play">▶ Play</span>
+    </div>
+  </a>
+  <a class="card" href="fable-supernova.html">
+    <img src="preview-supernova.png" alt="A shockwave rippling through a spiral galaxy">
+    <div class="card-body">
+      <h2>Supernova <span class="dot">●</span></h2>
+      <p>The original toy. A 120,000-star spiral galaxy that bends toward your finger. Tap anywhere to send a shockwave ripping through it. Simple, hypnotic, endless.</p>
+      <span class="play">▶ Play</span>
+    </div>
+  </a>
+  <a class="card" href="fable-power-core.html">
+    <img src="preview-power.png" alt="A glowing plasma core with the number 1,000,000,000">
+    <div class="card-body">
+      <h2>Power Readout <span class="dot">●</span></h2>
+      <p>Where it all started: a power gauge calibrated to exactly 1,000,000,000× cool, with a live plasma core and instruments pinned past their limits.</p>
+      <span class="play">▶ View</span>
+    </div>
+  </a>
+</main>
+
+<footer>
+  Built with Claude Code · runs on any phone or computer<br>
+  hold · swipe · double-tap · two fingers · tilt
+</footer>
+</body>
+</html>

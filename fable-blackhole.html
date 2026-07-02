@@ -112,8 +112,10 @@
 <div id="hud">SCORE 0</div>
 <div id="combo"></div>
 <div id="controls">
+  <button id="skinBtn" type="button">🎨 plasma</button>
   <button id="warpBtn" type="button">⏱ 1×</button>
   <button id="survBtn" type="button">⚔ survival</button>
+  <button id="cardBtn" type="button" style="display:none">💾 score card</button>
 </div>
 <div class="ui" id="ui">
   <h1>EVENT&thinsp;HORIZON</h1>
@@ -141,9 +143,13 @@
     'uniform vec3  u_bh0;',
     'uniform vec3  u_bh1;',
     'uniform vec3  u_wh;',   // white hole: ndc x, y, strength
+    'uniform vec3  u_neut;', // neutron star: ndc x, y, strength
     'uniform vec4  u_boom;', // ndc x, y, sim time, power
     'uniform float u_aspect;',
     'uniform float u_dpr;',
+    'uniform vec3 u_c1;',    // skin palette
+    'uniform vec3 u_c2;',
+    'uniform vec3 u_c3;',
     'varying vec3 v_color;',
     'varying float v_glow;',
     'varying float v_fade;',
@@ -215,6 +221,13 @@
     '    ndc += (dw/dwl) * u_wh.z * 0.5 * exp(-dwl*dwl*4.0);',
     '    glow += u_wh.z * 2.2 * exp(-dwl*dwl*24.0);',
     '  }',
+    /* passing neutron star drags a wake of stars */
+    '  if (u_neut.z > 0.01){',
+    '    vec2 dn = u_neut.xy - ndc;',
+    '    float dnl = length(dn) + 0.0001;',
+    '    ndc += (dn/dnl) * u_neut.z * 0.35 * exp(-dnl*dnl*14.0);',
+    '    glow += u_neut.z * 1.6 * exp(-dnl*dnl*40.0);',
+    '  }',
     '  float bt = u_t - u_boom.z;',
     '  if (bt > 0.0 && bt < 4.0){',
     '    vec2 db = ndc - u_boom.xy;',
@@ -229,12 +242,9 @@
     '  v_fade = fade;',
     '  gl_Position = vec4(ndc, 0.0, 1.0);',
     '  gl_PointSize = max(a_p.w * (2.4/z) * u_dpr, 1.0);',
-    /* base galaxy colors */
-    '  vec3 cCyan = vec3(0.31,0.88,1.0);',
-    '  vec3 cMag  = vec3(1.0,0.24,0.94);',
-    '  vec3 cSol  = vec3(1.0,0.69,0.18);',
-    '  vec3 col = mix(cCyan, cMag, smoothstep(0.05,0.7,r));',
-    '  col = mix(col, cSol, smoothstep(0.55,1.25,r)*fract(a_s.y*7.31));',
+    /* base galaxy colors come from the active skin */
+    '  vec3 col = mix(u_c1, u_c2, smoothstep(0.05,0.7,r));',
+    '  col = mix(col, u_c3, smoothstep(0.55,1.25,r)*fract(a_s.y*7.31));',
     '  col = mix(vec3(1.0,0.98,0.92), col, smoothstep(0.02,0.3,r));',
     /* stellar types: red giants, blue supergiants, rare gold stars */
     '  float typ = a_s.y;',
@@ -303,6 +313,9 @@
     'uniform vec4 u_boom;',    // uv x, y, sim time, power
     'uniform vec4 u_comet;',   // uv x, y, heat, 0
     'uniform vec2 u_cometDir;',
+    'uniform vec4 u_neutP;',   // neutron star: uv x, y, heat, 0
+    'uniform vec2 u_neutDir;',
+    'uniform vec3 u_nebTint;',
     'float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453123); }',
     'float noise(vec2 p){',
     '  vec2 i = floor(p), f = fract(p);',
@@ -390,6 +403,20 @@
     '      ringCol += u_comet.z * vec3(0.4, 0.7, 1.0) * exp(-side*side/0.00014) * (1.0 - along/0.14) * 0.9;',
     '    }',
     '  }',
+    /* rogue neutron star: pulsing violet-white beacon with a long wake */
+    '  if (u_neutP.z > 0.001){',
+    '    vec2 cp = corr(u_neutP.xy);',
+    '    vec2 d = corr(v_uv) - cp;',
+    '    float r2 = dot(d,d);',
+    '    float pulse = 0.75 + 0.25*sin(u_t*14.0);',
+    '    ringCol += u_neutP.z * pulse * vec3(0.88, 0.82, 1.0) * exp(-r2/0.00016) * 2.2;',
+    '    ringCol += u_neutP.z * vec3(0.5, 0.4, 1.0) * exp(-r2/0.0016) * 0.5;',
+    '    float along = dot(d, -u_neutDir);',
+    '    float side = dot(d, vec2(-u_neutDir.y, u_neutDir.x));',
+    '    if (along > 0.0 && along < 0.26){',
+    '      ringCol += u_neutP.z * vec3(0.55, 0.45, 1.0) * exp(-side*side/0.00020) * (1.0 - along/0.26) * 0.8;',
+    '    }',
+    '  }',
     '  vec2 dvec = suv - v_uv;',
     '  vec3 scene;',
     '  scene.r = texture2D(u_scene, clampUV(v_uv + dvec*1.06)).r;',
@@ -403,6 +430,7 @@
     '  vec3 neb = vec3(0.050,0.030,0.105)*n1*n1*2.1',
     '           + vec3(0.105,0.022,0.125)*n2*n2*n1*1.5',
     '           + vec3(0.012,0.030,0.070)*n2*0.8;',
+    '  neb *= u_nebTint;',
     '  float sp = hash(floor(np*240.0));',
     '  neb += vec3(0.8) * step(0.9985, sp) * (0.3 + 0.7*fract(sp*77.7)) * (0.4 + 0.6*sin(u_t*2.0 + sp*40.0));',
     '  float lit = 1.0 - dark;',
@@ -438,9 +466,9 @@
     names.forEach(function(n){ o[n] = gl.getUniformLocation(prog, n); });
     return o;
   }
-  var US = uniforms(progStars, ['u_t','u_mouse','u_cam','u_bh0','u_bh1','u_wh','u_boom','u_aspect','u_dpr']);
+  var US = uniforms(progStars, ['u_t','u_mouse','u_cam','u_bh0','u_bh1','u_wh','u_neut','u_boom','u_aspect','u_dpr','u_c1','u_c2','u_c3']);
   var UB = uniforms(progBlur, ['u_tex','u_dir','u_thresh']);
-  var UP = uniforms(progPost, ['u_scene','u_bloom','u_t','u_aspect','u_bh0','u_bh1','u_wh','u_boom','u_comet','u_cometDir']);
+  var UP = uniforms(progPost, ['u_scene','u_bloom','u_t','u_aspect','u_bh0','u_bh1','u_wh','u_boom','u_comet','u_cometDir','u_neutP','u_neutDir','u_nebTint']);
 
   /* =============== GEOMETRY =============== */
   var small = Math.min(screen.width, screen.height) < 600;
@@ -553,6 +581,16 @@
   }
   var white = { x: 0, y: 0, t0: -1000 };
   var comet = { x: 0, y: 0, vx: 0, vy: 0, t0: -1000, live: false };
+  var neut = { x: 0, y: 0, vx: 0, vy: 0, live: false };
+  var nextNeut = 22;
+  var SKINS = [
+    { name: 'plasma', c1: [0.31,0.88,1.0], c2: [1.0,0.24,0.94], c3: [1.0,0.69,0.18], neb: [1.0,1.0,1.0] },
+    { name: 'ice',    c1: [0.85,0.95,1.0], c2: [0.35,0.65,1.0], c3: [0.55,0.90,0.95], neb: [0.55,1.0,1.85] },
+    { name: 'lava',   c1: [1.0,0.90,0.50], c2: [1.0,0.38,0.10], c3: [0.95,0.12,0.05], neb: [1.9,0.65,0.30] },
+    { name: 'monke',  c1: [0.65,1.0,0.55], c2: [0.15,0.85,0.40], c3: [0.95,0.90,0.30], neb: [0.55,1.75,0.70] }
+  ];
+  var skinIdx = 0;
+  try { skinIdx = (+localStorage.getItem('eh_skin') || 0) % SKINS.length; } catch(err){}
   var boomNDC = [0, 0, -1000, 1];
   var boomUV = [0, 0, -1000, 1];
   var eaten = 0;
@@ -579,6 +617,7 @@
 
   /* ---- audio ---- */
   var AC = null, rumbleGain = null, rumbleLP = null, noiseBuf = null;
+  var droneGain = null, droneLP = null, droneDetune = null;
   function ensureAudio(){
     if (AC) return;
     try {
@@ -592,6 +631,27 @@
       rumbleGain = AC.createGain(); rumbleGain.gain.value = 0;
       src.connect(rumbleLP); rumbleLP.connect(rumbleGain); rumbleGain.connect(AC.destination);
       src.start();
+      /* reactive ambient drone: A minor pad that darkens as holes grow */
+      droneLP = AC.createBiquadFilter(); droneLP.type='lowpass'; droneLP.frequency.value = 240;
+      droneGain = AC.createGain(); droneGain.gain.value = 0;
+      droneLP.connect(droneGain); droneGain.connect(AC.destination);
+      var freqs = [55, 82.5, 110.3, 165.2];
+      var types = ['sawtooth','sine','sine','sine'];
+      var gains = [0.5, 0.45, 0.35, 0.18];
+      droneDetune = [];
+      for (var v=0; v<freqs.length; v++){
+        var o = AC.createOscillator();
+        o.type = types[v]; o.frequency.value = freqs[v];
+        var og = AC.createGain(); og.gain.value = gains[v];
+        o.connect(og); og.connect(droneLP);
+        o.start();
+        droneDetune.push(o);
+      }
+      /* slow shimmer LFO on the filter */
+      var lfo = AC.createOscillator(); lfo.frequency.value = 0.08;
+      var lfoG = AC.createGain(); lfoG.gain.value = 60;
+      lfo.connect(lfoG); lfoG.connect(droneLP.frequency);
+      lfo.start();
     } catch(err){ AC = null; }
   }
   function boomSound(power){
@@ -613,6 +673,17 @@
       ng.gain.exponentialRampToValueAtTime(0.001, t + 0.8 + power*0.4);
       nb.connect(hp); hp.connect(ng); ng.connect(AC.destination);
       nb.start(t); nb.stop(t + 0.9 + power*0.4);
+      /* big detonations get a sub-bass drop */
+      if (power > 0.9){
+        var sub = AC.createOscillator(); sub.type='sine';
+        sub.frequency.setValueAtTime(42, t);
+        sub.frequency.exponentialRampToValueAtTime(15, t + 1.6);
+        var sg = AC.createGain();
+        sg.gain.setValueAtTime(0.55, t);
+        sg.gain.exponentialRampToValueAtTime(0.001, t + 1.8);
+        sub.connect(sg); sg.connect(AC.destination);
+        sub.start(t); sub.stop(t + 1.9);
+      }
     } catch(err){}
   }
 
@@ -735,6 +806,61 @@
   addEventListener('pointercancel', release);
 
   /* ---- controls ---- */
+  var skinBtn = document.getElementById('skinBtn');
+  var cardBtn = document.getElementById('cardBtn');
+  skinBtn.textContent = '🎨 ' + SKINS[skinIdx].name;
+  skinBtn.addEventListener('click', function(){
+    skinIdx = (skinIdx + 1) % SKINS.length;
+    skinBtn.textContent = '🎨 ' + SKINS[skinIdx].name;
+    try { localStorage.setItem('eh_skin', skinIdx); } catch(err){}
+  });
+  var wantCard = false, lastSurvScore = 0;
+  cardBtn.addEventListener('click', function(){ wantCard = true; });
+  function makeCard(){
+    try {
+      var W = 1080, H = 1350;
+      var c2d = document.createElement('canvas');
+      c2d.width = W; c2d.height = H;
+      var x = c2d.getContext('2d');
+      x.fillStyle = '#050310'; x.fillRect(0, 0, W, H);
+      /* cover-fit the live frame */
+      var sc = Math.max(W/cv.width, H/cv.height);
+      var dw = cv.width*sc, dh = cv.height*sc;
+      x.drawImage(cv, (W-dw)/2, (H-dh)/2, dw, dh);
+      var grad = x.createLinearGradient(0, H*0.45, 0, H);
+      grad.addColorStop(0, 'rgba(5,3,16,0)');
+      grad.addColorStop(1, 'rgba(5,3,16,0.94)');
+      x.fillStyle = grad; x.fillRect(0, 0, W, H);
+      x.textAlign = 'center';
+      x.fillStyle = '#9d92c4';
+      x.font = '600 34px ui-monospace, Menlo, monospace';
+      x.fillText('E V E N T   H O R I Z O N', W/2, H - 330);
+      x.fillStyle = '#ffffff';
+      x.shadowColor = 'rgba(255,61,240,0.8)'; x.shadowBlur = 40;
+      x.font = '700 130px ui-monospace, Menlo, monospace';
+      x.fillText(fmt(lastSurvScore), W/2, H - 185);
+      x.shadowBlur = 0;
+      x.fillStyle = '#4ee1ff';
+      x.font = '600 30px ui-monospace, Menlo, monospace';
+      x.fillText('SURVIVAL SCORE  ·  BEST ' + fmt(bestSurv), W/2, H - 110);
+      x.fillStyle = '#5c5480';
+      x.font = '26px ui-monospace, Menlo, monospace';
+      x.fillText('FABLE 5 GALAXY LAB', W/2, H - 55);
+      c2d.toBlob(function(blob){
+        if (!blob) return;
+        var file = new File([blob], 'event-horizon-score.png', { type: 'image/png' });
+        if (navigator.canShare && navigator.canShare({ files: [file] })){
+          navigator.share({ files: [file], title: 'EVENT HORIZON score' }).catch(function(){});
+        } else {
+          var a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = 'event-horizon-score.png';
+          a.click();
+          setTimeout(function(){ URL.revokeObjectURL(a.href); }, 5000);
+        }
+      });
+    } catch(err){}
+  }
   warpBtn.addEventListener('click', function(){
     warpIdx = (warpIdx + 1) % WARPS.length;
     warp = WARPS[warpIdx];
@@ -753,6 +879,7 @@
     survivalEnd = performance.now() + 60000;
     survBtn.classList.add('on');
     survBtn.textContent = '⚔ abort';
+    cardBtn.style.display = 'none';
     showCombo('60 SECONDS · DESTROY');
   });
 
@@ -801,6 +928,48 @@
       rumbleGain.gain.value = Math.min(0.55, sTot * 0.35);
       rumbleLP.frequency.value = 90 + sMax * 60;
     }
+    /* ambient drone darkens and detunes as holes grow */
+    if (droneGain){
+      droneGain.gain.value = 0.028 + Math.min(sMax, 1.6) * 0.035;
+      droneLP.frequency.value = 240 + sMax * 420;
+      for (var dv=0; dv<droneDetune.length; dv++){
+        droneDetune[dv].detune.value = -sMax * 35 * (dv + 1);
+      }
+    }
+
+    /* rogue neutron star */
+    if (!neut.live && simT > nextNeut){
+      var fromLeft = Math.random() < 0.5;
+      neut.x = fromLeft ? -30 : innerWidth + 30;
+      neut.y = innerHeight * (0.25 + Math.random() * 0.5);
+      neut.vx = (fromLeft ? 1 : -1) * innerWidth / (5.5 + Math.random()*2);
+      neut.vy = (Math.random() - 0.5) * innerHeight / 14;
+      neut.live = true;
+      flashMsg('<span class="warn">⚠ NEUTRON STAR INBOUND — CATCH IT</span>', 2600);
+    }
+    var neutHeat = 0;
+    if (neut.live){
+      neut.x += neut.vx * dt * warp;
+      neut.y += neut.vy * dt * warp;
+      neutHeat = 1;
+      if (neut.x < -60 || neut.x > innerWidth + 60 || neut.y < -60 || neut.y > innerHeight + 60){
+        neut.live = false;
+        nextNeut = simT + 24 + Math.random() * 16;
+      } else {
+        for (var nk=0; nk<act.length; nk++){
+          var hh = act[nk];
+          var hr = (0.035 + 0.095*hh.s) * innerHeight/2 * 1.6;
+          if (Math.hypot(hh.x - neut.x, hh.y - neut.y) < hr){
+            neut.live = false;
+            nextNeut = simT + 24 + Math.random() * 16;
+            score += 20000;
+            triggerBoom(neut.x, neut.y, 0.9, 'NEUTRON STAR DEVOURED');
+            flashMsg('<span class="warn">★ +20,000 NEUTRON BONUS</span>', 2400);
+            break;
+          }
+        }
+      }
+    }
 
     /* comet flight */
     var cometHeat = 0;
@@ -832,6 +1001,8 @@
       if (recordS){ bestSurv = survScore; try { localStorage.setItem('eh_best_surv', bestSurv); } catch(err){} }
       showCombo(recordS ? 'NEW SURVIVAL RECORD' : 'TIME UP');
       flashMsg('<span class="surv">⚔ SURVIVAL SCORE ' + fmt(survScore) + (recordS ? ' · NEW BEST' : ' · BEST ' + fmt(bestSurv)) + '</span>', 4000);
+      lastSurvScore = survScore;
+      cardBtn.style.display = '';
     }
     /* high score */
     if (Math.floor(score) > best){
@@ -861,6 +1032,13 @@
     var cDir = [comet.vx/cd * aspect, -comet.vy/cd]; /* corrected-space direction */
     var cdn = Math.hypot(cDir[0], cDir[1]) || 1;
     cDir = [cDir[0]/cdn, cDir[1]/cdn];
+    var nNDC = toNDC(neut.x, neut.y);
+    var nUV = toUV(neut.x, neut.y);
+    var nd = Math.hypot(neut.vx, neut.vy) || 1;
+    var nDir = [neut.vx/nd * aspect, -neut.vy/nd];
+    var ndn = Math.hypot(nDir[0], nDir[1]) || 1;
+    nDir = [nDir[0]/ndn, nDir[1]/ndn];
+    var skin = SKINS[skinIdx];
 
     /* pass 1: stars + trails */
     gl.bindFramebuffer(gl.FRAMEBUFFER, scene.fbo);
@@ -878,9 +1056,13 @@
     gl.uniform3f(US.u_bh0, n0[0], n0[1], n0[2]);
     gl.uniform3f(US.u_bh1, n1[0], n1[1], n1[2]);
     gl.uniform3f(US.u_wh, wNDC[0], wNDC[1], wS);
+    gl.uniform3f(US.u_neut, nNDC[0], nNDC[1], neutHeat * 0.9);
     gl.uniform4f(US.u_boom, boomNDC[0], boomNDC[1], boomNDC[2], boomNDC[3]);
     gl.uniform1f(US.u_aspect, aspect);
     gl.uniform1f(US.u_dpr, dpr);
+    gl.uniform3f(US.u_c1, skin.c1[0], skin.c1[1], skin.c1[2]);
+    gl.uniform3f(US.u_c2, skin.c2[0], skin.c2[1], skin.c2[2]);
+    gl.uniform3f(US.u_c3, skin.c3[0], skin.c3[1], skin.c3[2]);
     gl.drawArrays(gl.POINTS, 0, TOTAL);
     gl.disable(gl.BLEND);
 
@@ -919,7 +1101,13 @@
     gl.uniform4f(UP.u_boom, boomUV[0], boomUV[1], boomUV[2], boomUV[3]);
     gl.uniform4f(UP.u_comet, cUV[0], cUV[1], cometHeat, 0);
     gl.uniform2f(UP.u_cometDir, cDir[0], cDir[1]);
+    gl.uniform4f(UP.u_neutP, nUV[0], nUV[1], neutHeat, 0);
+    gl.uniform2f(UP.u_neutDir, nDir[0], nDir[1]);
+    gl.uniform3f(UP.u_nebTint, skin.neb[0], skin.neb[1], skin.neb[2]);
     drawQuad();
+
+    /* score card must be captured in the same frame the buffer is drawn */
+    if (wantCard){ wantCard = false; makeCard(); }
 
     if (!reduced) requestAnimationFrame(draw);
   }
