@@ -13,14 +13,22 @@
   }
   #gl{position:fixed;inset:0;width:100%;height:100%;display:block;cursor:crosshair;touch-action:none}
   body.shake #gl{animation:shake .5s ease-out}
+  body.shake-mega #gl{animation:shakeMega .9s ease-out}
   @keyframes shake{
     0%{transform:translate(0,0)} 12%{transform:translate(-14px,9px)}
     25%{transform:translate(11px,-12px)} 40%{transform:translate(-8px,-7px)}
     55%{transform:translate(9px,6px)} 70%{transform:translate(-5px,4px)}
     85%{transform:translate(3px,-3px)} 100%{transform:translate(0,0)}
   }
-  /* black hole overlay: dark core + spinning accretion ring */
-  #bh{
+  @keyframes shakeMega{
+    0%{transform:translate(0,0) scale(1.03)} 10%{transform:translate(-26px,16px)}
+    22%{transform:translate(22px,-20px)} 34%{transform:translate(-18px,-13px)}
+    46%{transform:translate(17px,12px)} 58%{transform:translate(-12px,9px)}
+    70%{transform:translate(9px,-7px)} 82%{transform:translate(-5px,4px)}
+    100%{transform:translate(0,0) scale(1)}
+  }
+  /* black hole overlay: dark core + spinning accretion ring (cloned per finger) */
+  .bh{
     position:fixed;
     width:100px;height:100px;
     margin:-50px 0 0 -50px;
@@ -33,9 +41,8 @@
       rgba(255,140,40,.75) 58%,
       rgba(255,61,240,.35) 68%,
       transparent 76%);
-    filter:drop-shadow(0 0 30px rgba(255,140,40,.7)) drop-shadow(0 0 80px rgba(255,61,240,.4));
   }
-  #bh::before{
+  .bh::before{
     content:"";
     position:absolute;inset:-12%;
     border-radius:50%;
@@ -48,10 +55,7 @@
     animation:spin 1.6s linear infinite;
   }
   @keyframes spin{to{transform:rotate(360deg)}}
-  @media (prefers-reduced-motion:reduce){
-    #bh::before{animation:none}
-    body.shake #gl{animation:none}
-  }
+  #dim{position:fixed;inset:0;pointer-events:none;background:#02010a;opacity:0}
   #flash{
     position:fixed;inset:0;pointer-events:none;
     background:radial-gradient(circle at var(--fx,50%) var(--fy,50%),rgba(255,255,255,.95),rgba(255,150,60,.45) 25%,rgba(255,61,240,.2) 45%,transparent 70%);
@@ -59,7 +63,35 @@
   }
   #flash.boom{animation:boom 1.3s ease-out}
   @keyframes boom{0%{opacity:1}100%{opacity:0}}
-  @media (prefers-reduced-motion:reduce){#flash.boom{animation:none}}
+  #hud{
+    position:fixed;top:4.5vh;left:0;right:0;
+    text-align:center;pointer-events:none;
+    font-family:ui-monospace,'SF Mono','Cascadia Mono',Menlo,Consolas,monospace;
+    font-size:clamp(.7rem,2vw,.9rem);
+    letter-spacing:.3em;text-transform:uppercase;
+    color:#4ee1ff;
+    text-shadow:0 0 14px rgba(78,225,255,.7);
+    font-variant-numeric:tabular-nums;
+  }
+  #hud .warn{color:#ffb02e;text-shadow:0 0 14px rgba(255,176,46,.8)}
+  #combo{
+    position:fixed;top:38vh;left:0;right:0;
+    text-align:center;pointer-events:none;
+    font-family:ui-monospace,'SF Mono','Cascadia Mono',Menlo,Consolas,monospace;
+    font-size:clamp(1.2rem,5vw,2.6rem);
+    font-weight:700;letter-spacing:.3em;text-transform:uppercase;
+    color:#fff;
+    text-shadow:0 0 30px rgba(255,140,40,.9),0 0 80px rgba(255,61,240,.6);
+    opacity:0;
+  }
+  #combo.pop{animation:pop 1.6s cubic-bezier(.16,1,.3,1)}
+  @keyframes pop{
+    0%{opacity:0;transform:scale(.5)}
+    12%{opacity:1;transform:scale(1.12)}
+    28%{transform:scale(1)}
+    75%{opacity:1}
+    100%{opacity:0;transform:scale(1.04)}
+  }
   .ui{
     position:fixed;inset:0;
     display:flex;flex-direction:column;align-items:center;justify-content:flex-end;
@@ -76,21 +108,29 @@
   .ui p{
     font-size:clamp(.62rem,1.6vw,.78rem);letter-spacing:.3em;text-transform:uppercase;color:#9d92c4;
   }
+  @media (prefers-reduced-motion:reduce){
+    .bh::before{animation:none}
+    body.shake #gl,body.shake-mega #gl{animation:none}
+    #flash.boom{animation:none}
+    #combo.pop{animation:none;opacity:1}
+  }
 </style>
 
 <canvas id="gl"></canvas>
-<div id="bh"></div>
+<div id="dim"></div>
 <div id="flash"></div>
+<div id="hud">STARS CONSUMED <span id="count">0</span></div>
+<div id="combo"></div>
 <div class="ui" id="ui">
   <h1>EVENT&thinsp;HORIZON</h1>
-  <p id="hint">hold to open a black hole · release to detonate</p>
+  <p id="hint">hold to open a black hole · keep holding to go supermassive · release to detonate</p>
 </div>
 
 <script>
 (function(){
   var reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
   var isTouch = matchMedia('(pointer: coarse)').matches;
-  if (isTouch) document.getElementById('hint').textContent = 'touch & hold to open a black hole · let go to detonate';
+  if (isTouch) document.getElementById('hint').textContent = 'touch & hold · keep holding to go supermassive · two fingers = two holes';
   document.addEventListener('contextmenu', function(e){ e.preventDefault(); });
   var cv = document.getElementById('gl');
   var gl = cv.getContext('webgl', {antialias:false, alpha:false, powerPreference:'high-performance'});
@@ -101,13 +141,31 @@
     'attribute vec4 a_s;', // z-offset, warmMix, phase, brightness
     'uniform float u_t;',
     'uniform vec2  u_mouse;',
-    'uniform vec3  u_bh;',   // x, y (NDC), strength 0..1
-    'uniform vec3  u_boom;', // x, y (NDC), release time
+    'uniform vec3  u_bh0;',  // x, y (NDC), strength 0..2
+    'uniform vec3  u_bh1;',
+    'uniform vec4  u_boom;', // x, y (NDC), release time, power
     'uniform float u_aspect;',
     'uniform float u_dpr;',
     'varying vec3 v_color;',
     'varying float v_glow;',
     'varying float v_fade;',
+    'vec2 applyHole(vec2 ndc, vec3 bh, float phase, inout float fade, inout float glow){',
+    '  float s = bh.z;',
+    '  if (s < 0.003) return ndc;',
+    '  vec2 dm = bh.xy - ndc;',
+    '  float d = length(dm) + 0.0001;',
+    '  vec2 dir = dm / d;',
+    '  vec2 perp = vec2(-dir.y, dir.x);',
+    '  float pull = min(s, 1.6) * exp(-d*d*2.2/(1.0+0.6*max(s-1.0,0.0)));',
+    '  ndc += dir * pull * (0.5 + 0.5*min(s,1.0));',
+    '  ndc += perp * pull * 0.75 * sin(u_t*0.9 + phase);',
+    '  vec2 dm2 = bh.xy - ndc;',
+    '  float d2 = length(dm2);',
+    '  float horizon = 0.035 + 0.095*s;',
+    '  fade = min(fade, smoothstep(horizon, horizon*1.7, d2));',
+    '  glow += min(s,1.3) * 3.0 * exp(-pow((d2 - horizon*2.0)*10.0, 2.0));',
+    '  return ndc;',
+    '}',
     'void main(){',
     '  float r = a_p.x;',
     '  float theta = a_p.y + u_t * a_p.z / (0.35 + r) + r * 3.1;',
@@ -121,42 +179,28 @@
     '  float z = pos.z + 2.3;',
     '  vec2 ndc = pos.xy / z * 1.55;',
     '  ndc.x /= u_aspect;',
-    '  v_glow = 0.0;',
-    '  v_fade = 1.0;',
-    /* gentle mouse gravity when idle */
+    '  float glow = 0.0;',
+    '  float fade = 1.0;',
+    /* gentle mouse gravity when no hole is open */
+    '  float sTot = u_bh0.z + u_bh1.z;',
     '  vec2 dmm = u_mouse - ndc;',
-    '  ndc += dmm * 0.22 * exp(-dot(dmm,dmm)*7.0) * (1.0 - u_bh.z);',
-    /* ---- BLACK HOLE ---- */
-    '  float s = u_bh.z;',
-    '  if (s > 0.003){',
-    '    vec2 dm = u_bh.xy - ndc;',
-    '    float d = length(dm) + 0.0001;',
-    '    vec2 dir = dm / d;',
-    '    vec2 perp = vec2(-dir.y, dir.x);',
-    /* spiral infall: radial pull + tangential swirl, stronger near the hole */
-    '    float pull = s * exp(-d*d*2.2);',
-    '    ndc += dir * pull * (0.5 + 0.5*s);',
-    '    ndc += perp * pull * 0.75 * sin(u_t*0.9 + a_s.z);',
-    /* recompute distance after displacement */
-    '    vec2 dm2 = u_bh.xy - ndc;',
-    '    float d2 = length(dm2);',
-    '    float horizon = 0.035 + 0.095*s;',
-    /* stars inside the horizon are consumed */
-    '    v_fade = smoothstep(horizon, horizon*1.7, d2);',
-    /* accretion heat: stars ignite as they circle the drain */
-    '    v_glow += s * 3.0 * exp(-pow((d2 - horizon*2.0)*10.0, 2.0));',
-    '  }',
+    '  ndc += dmm * 0.22 * exp(-dot(dmm,dmm)*7.0) * max(1.0 - sTot, 0.0);',
+    /* ---- BLACK HOLES (up to two) ---- */
+    '  ndc = applyHole(ndc, u_bh0, a_s.z, fade, glow);',
+    '  ndc = applyHole(ndc, u_bh1, a_s.z + 2.1, fade, glow);',
     /* ---- DETONATION ---- */
     '  float bt = u_t - u_boom.z;',
-    '  if (bt > 0.0 && bt < 3.5){',
+    '  if (bt > 0.0 && bt < 4.0){',
     '    vec2 db = ndc - u_boom.xy;',
     '    float dd = length(db) + 0.0001;',
-    '    float wave = bt * 1.05;',
+    '    float wave = bt * (0.85 + 0.4*u_boom.w);',
     '    float g = exp(-pow((dd - wave)*4.5, 2.0));',
-    '    float decay = 1.0 - bt/3.5;',
-    '    ndc += (db/dd) * g * 0.5 * decay;',
-    '    v_glow += g * 3.5 * decay;',
+    '    float decay = 1.0 - bt/4.0;',
+    '    ndc += (db/dd) * g * 0.45 * u_boom.w * decay;',
+    '    glow += g * 3.0 * u_boom.w * decay;',
     '  }',
+    '  v_glow = glow;',
+    '  v_fade = fade;',
     '  gl_Position = vec4(ndc, 0.0, 1.0);',
     '  gl_PointSize = max(a_p.w * (2.4/z) * u_dpr, 1.0);',
     /* color: white core -> cyan -> magenta -> solar rim */
@@ -166,8 +210,7 @@
     '  vec3 col = mix(cCyan, cMag, smoothstep(0.05,0.7,r));',
     '  col = mix(col, cSol, smoothstep(0.55,1.25,r)*a_s.y);',
     '  col = mix(vec3(1.0,0.98,0.92), col, smoothstep(0.02,0.3,r));',
-    /* accreting stars shift white-hot */
-    '  col = mix(col, vec3(1.0,0.95,0.85), clamp(v_glow*0.35, 0.0, 1.0));',
+    '  col = mix(col, vec3(1.0,0.95,0.85), clamp(glow*0.35, 0.0, 1.0));',
     '  v_color = col * a_s.w;',
     '}'
   ].join('\n');
@@ -244,7 +287,7 @@
   attach('a_s', S);
 
   var U = {};
-  ['u_t','u_mouse','u_bh','u_boom','u_aspect','u_dpr'].forEach(function(n){ U[n] = gl.getUniformLocation(prog, n); });
+  ['u_t','u_mouse','u_bh0','u_bh1','u_boom','u_aspect','u_dpr'].forEach(function(n){ U[n] = gl.getUniformLocation(prog, n); });
 
   gl.enable(gl.BLEND);
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
@@ -261,24 +304,23 @@
   size();
   addEventListener('resize', size);
 
-  /* ---- input ---- */
-  var mouse = [10, 10];
-  var px = innerWidth/2, py = innerHeight/2;
+  /* ---- input: up to two simultaneous black holes ---- */
   function toNDC(x, y){ return [(x/innerWidth)*2-1, -((y/innerHeight)*2-1)]; }
-  addEventListener('pointermove', function(e){
-    px = e.clientX; py = e.clientY;
-    mouse = toNDC(px, py);
-  });
-  addEventListener('pointerleave', function(){ mouse = [10,10]; });
+  var mouse = [10, 10];
+  var holes = {};            /* pointerId -> {x, y, s, el} */
+  function holeCount(){ return Object.keys(holes).length; }
 
-  var held = false;
-  var strength = 0;
-  var boomT = -1000, boomPos = [0,0];
+  var boom = [0, 0, -1000, 1];
+  var eaten = 0;
   var flash = document.getElementById('flash');
-  var bhEl = document.getElementById('bh');
+  var dim = document.getElementById('dim');
+  var hud = document.getElementById('hud');
+  var countEl = document.getElementById('count');
+  var combo = document.getElementById('combo');
+  function fmt(n){ return Math.floor(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g,','); }
 
   /* ---- synthesized audio (created on first gesture) ---- */
-  var AC = null, rumbleGain = null, noiseBuf = null;
+  var AC = null, rumbleGain = null, rumbleLP = null, noiseBuf = null;
   function ensureAudio(){
     if (AC) return;
     try {
@@ -288,53 +330,83 @@
       for (var i=0;i<d.length;i++){ var w = Math.random()*2-1; last = (last + 0.02*w)/1.02; d[i] = last*3.5; }
       var src = AC.createBufferSource();
       src.buffer = noiseBuf; src.loop = true;
-      var lp = AC.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value = 110;
+      rumbleLP = AC.createBiquadFilter(); rumbleLP.type='lowpass'; rumbleLP.frequency.value = 90;
       rumbleGain = AC.createGain(); rumbleGain.gain.value = 0;
-      src.connect(lp); lp.connect(rumbleGain); rumbleGain.connect(AC.destination);
+      src.connect(rumbleLP); rumbleLP.connect(rumbleGain); rumbleGain.connect(AC.destination);
       src.start();
     } catch(e){ AC = null; }
   }
-  function boomSound(){
+  function boomSound(power){
     if (!AC) return;
     try {
       var t = AC.currentTime;
       var o = AC.createOscillator(); o.type='sine';
-      o.frequency.setValueAtTime(75, t);
-      o.frequency.exponentialRampToValueAtTime(28, t+1.3);
+      o.frequency.setValueAtTime(60 + 20/power, t);
+      o.frequency.exponentialRampToValueAtTime(24, t + 1.0 + power*0.6);
       var og = AC.createGain();
-      og.gain.setValueAtTime(0.55, t);
-      og.gain.exponentialRampToValueAtTime(0.001, t+1.5);
+      og.gain.setValueAtTime(Math.min(0.75, 0.4*power + 0.2), t);
+      og.gain.exponentialRampToValueAtTime(0.001, t + 1.2 + power*0.6);
       o.connect(og); og.connect(AC.destination);
-      o.start(t); o.stop(t+1.6);
+      o.start(t); o.stop(t + 1.3 + power*0.6);
       var nb = AC.createBufferSource(); nb.buffer = noiseBuf;
-      var hp = AC.createBiquadFilter(); hp.type='lowpass'; hp.frequency.value = 450;
+      var hp = AC.createBiquadFilter(); hp.type='lowpass'; hp.frequency.value = 350 + power*250;
       var ng = AC.createGain();
-      ng.gain.setValueAtTime(0.45, t);
-      ng.gain.exponentialRampToValueAtTime(0.001, t+1.0);
+      ng.gain.setValueAtTime(Math.min(0.6, 0.3*power + 0.15), t);
+      ng.gain.exponentialRampToValueAtTime(0.001, t + 0.8 + power*0.4);
       nb.connect(hp); hp.connect(ng); ng.connect(AC.destination);
-      nb.start(t); nb.stop(t+1.1);
+      nb.start(t); nb.stop(t + 0.9 + power*0.4);
     } catch(e){}
+  }
+
+  function makeBHEl(){
+    var el = document.createElement('div');
+    el.className = 'bh';
+    document.body.appendChild(el);
+    return el;
   }
 
   addEventListener('pointerdown', function(e){
     e.preventDefault();
-    px = e.clientX; py = e.clientY;
-    mouse = toNDC(px, py);
-    held = true;
+    mouse = toNDC(e.clientX, e.clientY);
+    if (holeCount() >= 2) return;
+    holes[e.pointerId] = { x: e.clientX, y: e.clientY, s: 0, el: makeBHEl() };
     ensureAudio();
     if (AC && AC.state === 'suspended') AC.resume();
   });
-  function release(){
-    if (!held) return;
-    held = false;
-    if (strength > 0.08){
-      boomT = tNow;
-      boomPos = toNDC(px, py);
-      flash.style.setProperty('--fx', (px/innerWidth*100)+'%');
-      flash.style.setProperty('--fy', (py/innerHeight*100)+'%');
+  addEventListener('pointermove', function(e){
+    mouse = toNDC(e.clientX, e.clientY);
+    var h = holes[e.pointerId];
+    if (h){ h.x = e.clientX; h.y = e.clientY; }
+  });
+  addEventListener('pointerleave', function(){ mouse = [10,10]; });
+
+  function rankFor(power){
+    if (power >= 1.7) return 'GALAXY BREAKER';
+    if (power >= 1.15) return 'SUPERMASSIVE COLLAPSE';
+    if (power >= 0.6) return 'STELLAR DETONATION';
+    return 'SHOCKWAVE';
+  }
+  function release(e){
+    var h = holes[e.pointerId];
+    if (!h) return;
+    delete holes[e.pointerId];
+    h.el.remove();
+    if (h.s > 0.08){
+      var ndc = toNDC(h.x, h.y);
+      boom = [ndc[0], ndc[1], tNow, Math.min(h.s, 2)];
+      flash.style.setProperty('--fx', (h.x/innerWidth*100)+'%');
+      flash.style.setProperty('--fy', (h.y/innerHeight*100)+'%');
       flash.classList.remove('boom'); void flash.offsetWidth; flash.classList.add('boom');
-      document.body.classList.remove('shake'); void document.body.offsetWidth; document.body.classList.add('shake');
-      boomSound();
+      var mega = h.s > 1.15;
+      document.body.classList.remove('shake','shake-mega'); void document.body.offsetWidth;
+      document.body.classList.add(mega ? 'shake-mega' : 'shake');
+      boomSound(h.s);
+      combo.textContent = rankFor(h.s);
+      combo.classList.remove('pop'); void combo.offsetWidth; combo.classList.add('pop');
+      var released = holeCount() === 0 ? eaten : eaten * 0.5;
+      hud.innerHTML = '<span class="warn">★ ' + fmt(released) + ' STARS RELEASED</span>';
+      eaten = holeCount() === 0 ? 0 : eaten * 0.5;
+      setTimeout(function(){ hud.innerHTML = 'STARS CONSUMED <span id="count">' + fmt(eaten) + '</span>'; countEl = document.getElementById('count'); }, 1900);
     }
   }
   addEventListener('pointerup', release);
@@ -348,29 +420,42 @@
     var dt = Math.min(0.05, (ts - lastTs)/1000); lastTs = ts;
     tNow = (ts - t0)/1000;
 
-    /* black hole grows while held (~2.5s to full), collapses fast on release */
-    var target = held ? 1 : 0;
-    strength += (target - strength) * (held ? dt*1.6 : dt*9);
-    if (strength < 0.002) strength = 0;
-
-    /* overlay disk */
-    if (strength > 0.02){
-      var horizonNDC = 0.035 + 0.095*strength;
+    /* grow held holes: ~2.5s to full, then slow supermassive creep to 2x */
+    var list = [];
+    var sTot = 0, sMax = 0;
+    for (var id in holes){
+      var h = holes[id];
+      h.s += (h.s < 1 ? dt*0.55*(1.8 - h.s) : dt*0.16) ;
+      if (h.s > 2) h.s = 2;
+      sTot += h.s; if (h.s > sMax) sMax = h.s;
+      eaten = Math.min(N, eaten + dt * 9000 * h.s * h.s);
+      /* overlay disk: size, opacity, hue shift as it grows */
+      var horizonNDC = 0.035 + 0.095*h.s;
       var diamPx = horizonNDC * innerHeight * 2.4;
-      bhEl.style.opacity = Math.min(1, strength*2.2);
-      bhEl.style.left = px + 'px';
-      bhEl.style.top = py + 'px';
-      bhEl.style.transform = 'scale(' + (diamPx/100) + ')';
-    } else {
-      bhEl.style.opacity = 0;
+      h.el.style.opacity = Math.min(1, h.s*2.2);
+      h.el.style.left = h.x + 'px';
+      h.el.style.top = h.y + 'px';
+      h.el.style.transform = 'scale(' + (diamPx/100) + ')';
+      h.el.style.filter =
+        'hue-rotate(' + (Math.max(h.s-1,0)*140) + 'deg)' +
+        ' drop-shadow(0 0 30px rgba(255,140,40,.7)) drop-shadow(0 0 80px rgba(255,61,240,.4))';
+      list.push([h.x, h.y, h.s]);
     }
-    if (rumbleGain) rumbleGain.gain.value = strength * 0.4;
+    /* supermassive holes dim the rest of the universe */
+    dim.style.opacity = Math.max(0, Math.min(0.55, (sMax - 0.9) * 0.6));
+    if (rumbleGain){
+      rumbleGain.gain.value = Math.min(0.55, sTot * 0.35);
+      rumbleLP.frequency.value = 90 + sMax * 60;
+    }
+    if (countEl && holeCount() > 0) countEl.textContent = fmt(eaten);
 
-    var bhNDC = toNDC(px, py);
+    var b0 = list[0] ? toNDC(list[0][0], list[0][1]).concat(list[0][2]) : [0,0,0];
+    var b1 = list[1] ? toNDC(list[1][0], list[1][1]).concat(list[1][2]) : [0,0,0];
     gl.uniform1f(U.u_t, tNow);
     gl.uniform2f(U.u_mouse, mouse[0], mouse[1]);
-    gl.uniform3f(U.u_bh, bhNDC[0], bhNDC[1], strength);
-    gl.uniform3f(U.u_boom, boomPos[0], boomPos[1], boomT);
+    gl.uniform3f(U.u_bh0, b0[0], b0[1], b0[2]);
+    gl.uniform3f(U.u_bh1, b1[0], b1[1], b1[2]);
+    gl.uniform4f(U.u_boom, boom[0], boom[1], boom[2], boom[3]);
     gl.clear(gl.COLOR_BUFFER_BIT);
     gl.drawArrays(gl.POINTS, 0, TOTAL);
     if (!reduced) requestAnimationFrame(draw);
