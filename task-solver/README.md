@@ -9,9 +9,15 @@ and it works through them all.
 - **⚡ Do the task** — completes the task fully and delivers the finished result
 - **🗺️ Make a plan** — breaks a big task into clear, ordered steps with tips
 - **✨ Improve my work** — paste your draft/attempt, it polishes it and explains the changes
+- **📎 Attach files from your computer** — PDFs, photos/screenshots, and text/code files are
+  sent along with the task so the AI can read the actual assignment material (up to 20 MB each)
+- **⬇ Save results to your computer** — download any finished result as a file
 - **Batch mode** — add as many tasks as you want and hit "Do them all" once
 - Streams answers live as they're generated
 - No install, no server — just open the file in a browser
+
+> Note: a web page can't directly control your computer (browsers block that for safety),
+> so instead you attach the files a task needs and download the finished work back.
 
 ## Setup (2 minutes)
 

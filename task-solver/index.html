@@ -78,6 +78,30 @@
   .problem-card .remove:hover { color: var(--danger); }
   .problem-num { font-size: .8rem; color: var(--accent2); font-weight: 700; letter-spacing: .05em; text-transform: uppercase; margin-bottom: 6px; }
 
+  .attach-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+  .attach-btn {
+    background: var(--card2); color: var(--muted); border: 1px dashed var(--border);
+    border-radius: 8px; padding: 6px 12px; font-size: .85rem; cursor: pointer;
+  }
+  .attach-btn:hover { border-color: var(--accent); color: var(--text); }
+  .attach-chip {
+    display: inline-flex; align-items: center; background: var(--card2);
+    border: 1px solid var(--border); border-radius: 999px;
+    padding: 2px 10px; font-size: .78rem; color: var(--text);
+  }
+  .attach-chip button {
+    background: none; border: none; color: var(--muted);
+    cursor: pointer; padding: 0 0 0 6px; font-size: .85rem;
+  }
+  .attach-chip button:hover { color: var(--danger); }
+
+  .save-row { margin-top: 8px; text-align: right; }
+  .save-btn {
+    background: none; border: 1px solid var(--border); color: var(--accent2);
+    border-radius: 8px; padding: 5px 12px; font-size: .8rem; cursor: pointer;
+  }
+  .save-btn:hover { border-color: var(--accent2); }
+
   .answer {
     background: var(--card2);
     border-radius: 8px;
@@ -126,7 +150,7 @@
 <body>
 <div class="wrap">
   <h1>⚡ Task Solver <span>AI</span></h1>
-  <p class="sub">Paste one task or a whole list — writing, planning, summarizing, researching, problem-solving — and it works through them all.</p>
+  <p class="sub">Paste one task or a whole list — writing, planning, summarizing, researching, problem-solving — and it works through them all. Attach files from your computer (PDFs, photos, documents) and save the results back when it's done.</p>
 
   <div class="card">
     <details class="setup" id="setupBox">
@@ -245,17 +269,100 @@ function addProblem(focus = true) {
     <button class="remove" title="Remove this task">✕</button>
     <div class="problem-num">Task</div>
     <textarea class="problem-input" placeholder=""></textarea>
+    <div class="attach-row">
+      <button class="attach-btn" type="button">📎 Attach files from my computer</button>
+      <input type="file" class="file-input" multiple hidden
+        accept="image/png,image/jpeg,image/gif,image/webp,application/pdf,.txt,.md,.csv,.json,.js,.py,.html,.css,.java,.c,.cpp,.cs,.log">
+    </div>
     <div class="answer"></div>
+    <div class="save-row" style="display:none">
+      <button class="save-btn" type="button">⬇ Save result to my computer</button>
+    </div>
   `;
+  card._files = [];
   card.querySelector(".problem-input").placeholder = placeholderFor();
   card.querySelector(".remove").addEventListener("click", () => {
     if (problemsEl.children.length > 1) card.remove();
     else card.querySelector(".problem-input").value = "";
     renumber();
   });
+  const fileInput = card.querySelector(".file-input");
+  card.querySelector(".attach-btn").addEventListener("click", () => fileInput.click());
+  fileInput.addEventListener("change", async () => {
+    for (const f of [...fileInput.files]) {
+      if (f.size > 20 * 1024 * 1024) {
+        alert(`"${f.name}" is over 20 MB — too big to send. Skipping it.`);
+        continue;
+      }
+      try {
+        card._files.push(await readAttachment(f));
+      } catch (e) {
+        alert(`Couldn't read "${f.name}": ` + (e.message || e));
+      }
+    }
+    fileInput.value = "";
+    renderChips(card);
+  });
+  card.querySelector(".save-btn").addEventListener("click", () => {
+    const text = card._resultText || "";
+    if (!text) return;
+    const idx = [...problemsEl.children].indexOf(card) + 1;
+    const blob = new Blob([text], { type: "text/markdown" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "task-" + idx + "-result.md";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
   problemsEl.appendChild(card);
   renumber();
   if (focus) card.querySelector(".problem-input").focus();
+}
+
+const IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"];
+
+function readAttachment(file) {
+  return new Promise((resolve, reject) => {
+    const isImage = IMAGE_TYPES.includes(file.type);
+    const isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name);
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("read failed"));
+    if (isImage || isPdf) {
+      reader.onload = () => resolve({
+        name: file.name,
+        kind: isImage ? "image" : "pdf",
+        mediaType: isImage ? file.type : "application/pdf",
+        base64: String(reader.result).split(",")[1]
+      });
+      reader.readAsDataURL(file);
+    } else {
+      reader.onload = () => resolve({
+        name: file.name,
+        kind: "text",
+        text: String(reader.result)
+      });
+      reader.readAsText(file);
+    }
+  });
+}
+
+function renderChips(card) {
+  const row = card.querySelector(".attach-row");
+  row.querySelectorAll(".attach-chip").forEach(c => c.remove());
+  card._files.forEach((f, i) => {
+    const chip = document.createElement("span");
+    chip.className = "attach-chip";
+    chip.textContent = (f.kind === "image" ? "🖼 " : f.kind === "pdf" ? "📄 " : "📝 ") + f.name;
+    const x = document.createElement("button");
+    x.textContent = "✕";
+    x.title = "Remove attachment";
+    x.addEventListener("click", () => {
+      card._files.splice(i, 1);
+      renderChips(card);
+    });
+    chip.appendChild(x);
+    row.appendChild(chip);
+  });
 }
 
 function renumber() {
@@ -297,7 +404,33 @@ function renderMarkdown(md) {
 }
 
 // ---------- solving ----------
-async function solveOne(problemText, answerEl) {
+function buildContent(problemText, files) {
+  if (!files || !files.length) return problemText;
+  const content = [];
+  for (const f of files) {
+    if (f.kind === "image") {
+      content.push({
+        type: "image",
+        source: { type: "base64", media_type: f.mediaType, data: f.base64 }
+      });
+    } else if (f.kind === "pdf") {
+      content.push({
+        type: "document",
+        source: { type: "base64", media_type: "application/pdf", data: f.base64 },
+        title: f.name
+      });
+    } else {
+      content.push({
+        type: "text",
+        text: "Attached file \"" + f.name + "\":\n```\n" + f.text + "\n```"
+      });
+    }
+  }
+  content.push({ type: "text", text: problemText });
+  return content;
+}
+
+async function solveOne(problemText, files, answerEl) {
   answerEl.classList.add("visible");
   answerEl.innerHTML = '<span class="status">Thinking…</span>';
 
@@ -307,7 +440,7 @@ async function solveOne(problemText, answerEl) {
     max_tokens: 4096,
     stream: true,
     system: MODE_INFO[mode].system,
-    messages: [{ role: "user", content: problemText }]
+    messages: [{ role: "user", content: buildContent(problemText, files) }]
   };
 
   const res = await fetch(API_URL, {
@@ -330,7 +463,7 @@ async function solveOne(problemText, answerEl) {
     if (res.status === 401) msg = "Invalid API key — open Setup and check your key.";
     if (res.status === 429) msg = "Rate limited — wait a moment and try again. (" + msg + ")";
     answerEl.innerHTML = '<span class="error">⚠ ' + escapeHtml(msg) + "</span>";
-    return;
+    return "";
   }
 
   // Parse the SSE stream, accumulating text deltas
@@ -359,13 +492,14 @@ async function solveOne(problemText, answerEl) {
         }
       } else if (ev.type === "error" && ev.error) {
         answerEl.innerHTML = '<span class="error">⚠ ' + escapeHtml(ev.error.message || "Stream error") + "</span>";
-        return;
+        return "";
       }
     }
   }
   answerEl.innerHTML = text
     ? renderMarkdown(text)
     : '<span class="error">⚠ No response received — try again.</span>';
+  return text;
 }
 
 const solveBtn = document.getElementById("solveBtn");
@@ -393,11 +527,15 @@ solveBtn.addEventListener("click", async () => {
     for (const card of cards) {
       const text = card.querySelector(".problem-input").value.trim();
       const answerEl = card.querySelector(".answer");
+      const saveRow = card.querySelector(".save-row");
       try {
-        await solveOne(text, answerEl);
+        const result = await solveOne(text, card._files, answerEl);
+        card._resultText = result;
+        saveRow.style.display = result ? "" : "none";
       } catch (e) {
         answerEl.classList.add("visible");
         answerEl.innerHTML = '<span class="error">⚠ ' + escapeHtml(e.message || String(e)) + "</span>";
+        saveRow.style.display = "none";
       }
     }
   } finally {
