@@ -46,6 +46,10 @@
   #boostbtn{ position:fixed; right:16px; bottom:calc(158px + env(safe-area-inset-bottom)); width:74px; height:74px; font-size:31px; }
   #zoomcol{ position:fixed; right:16px; top:calc(64px + env(safe-area-inset-top)); display:flex; flex-direction:column; gap:10px; z-index:6; }
   #zoomcol .tbtn{ width:46px; height:46px; font-size:20px; }
+  #novabtn{ position:fixed; right:16px; bottom:calc(248px + env(safe-area-inset-bottom)); width:74px; height:74px; font-size:29px; opacity:.35; transition:opacity .3s; }
+  #novabtn.ready{ opacity:1; border-color:var(--mg); animation:novapulse .9s infinite; }
+  @keyframes novapulse{ 50%{ transform:scale(1.12); box-shadow:0 0 28px rgba(255,77,210,.85); } }
+  #toast{ position:fixed; left:50%; top:calc(118px + env(safe-area-inset-top)); transform:translateX(-50%); background:rgba(8,20,38,.94); border:1px solid rgba(255,184,77,.6); color:#ffd27a; padding:10px 18px; border-radius:12px; font-size:14px; letter-spacing:.5px; z-index:18; display:none; text-align:center; box-shadow:0 0 20px rgba(255,184,77,.3); max-width:86vw; }
   #banner h1{ font-size:clamp(24px,7vw,42px); letter-spacing:3px; }
   #banner p{ font-size:14px; }
 </style>
@@ -72,7 +76,10 @@
   <div class="row"><span>👉 <b>Right thumb</b> — touch anywhere else to aim; hold to keep firing</span></div>
   <div class="row"><span>🔥 <b>Boost button</b> — hold while flying for afterburner (drains energy)</span></div>
   <div class="row"><span>🔫 <b>Gadget grid</b> — tap a slot to switch weapons; locked ones show their price</span></div>
+  <div class="row"><span>💥 <b>SUPERNOVA</b> — charges as you deal damage; tap when it's glowing to devastate everything near you</span></div>
   <div class="row"><span>＋/− — zoom the camera in and out</span></div>
+  <div class="row"><span>⚡ <b>Combos</b> — destroy planets back-to-back for up to 3× dust. Every 3rd system hides a shielded <b style="color:#ff6d5a">CORE WORLD</b> boss. Shoot ☄️ comets for bonus dust.</span></div>
+  <div class="row"><span>💾 Progress saves automatically on this device.</span></div>
   <h3>TIPS</h3>
   <div class="row"><span>☀️ The star melts your hull. Planets grow defense turrets in deeper systems.<br><small>Hull slowly self-repairs when you avoid damage for a few seconds.</small></span></div>
   <div class="row"><span>🕳️ Black Holes shred everything nearby — deploy them onto fat planets.</span></div>
@@ -81,8 +88,10 @@
 <div id="banner"></div>
 <div id="touchui">
   <div class="tbtn" id="boostbtn">🔥</div>
+  <div class="tbtn" id="novabtn">💥</div>
   <div id="zoomcol"><div class="tbtn" id="zin">＋</div><div class="tbtn" id="zout">−</div></div>
 </div>
+<div id="toast"></div>
 <div class="panel" id="deskgate">
   <h2>📱 MADE FOR PHONES</h2>
   <p style="font-size:14px;color:#8fb8d8">Planet Destroyer is a touchscreen game — two thumbs, one doomed solar system. Open this on your phone:</p>
@@ -149,7 +158,11 @@ const sfx = {
   deny(){ tone({ type:'square', f:140, dur:0.15, vol:0.08 }); },
   warp(){ tone({ type:'sawtooth', f:80, f2:1200, dur:1.0, vol:0.1 }); tone({ f:1200, f2:80, dur:1.2, vol:0.06, delay:0.3 }); },
   hurt(){ noiseBurst(0.15, 0.12, 1200); tone({ type:'square', f:220, f2:60, dur:0.15, vol:0.1 }); },
+  combo(n){ const f = 440 * Math.pow(1.14, Math.min(n, 8)); tone({ f, dur:0.1, vol:0.12 }); tone({ f: f * 1.5, dur:0.14, vol:0.08, delay:0.06 }); },
+  novaReady(){ tone({ f:520, dur:0.12, vol:0.12 }); tone({ f:780, dur:0.12, vol:0.12, delay:0.12 }); tone({ f:1040, dur:0.2, vol:0.12, delay:0.24 }); },
+  alarm(){ tone({ type:'square', f:180, f2:120, dur:0.35, vol:0.12 }); tone({ type:'square', f:180, f2:120, dur:0.35, vol:0.12, delay:0.45 }); },
 };
+function buzz(pattern){ try{ if (navigator.vibrate) navigator.vibrate(pattern); }catch(_){} }
 function toggleMute(){ muted = !muted; document.getElementById('mutebtn').textContent = muted ? '🔇' : '🔊'; }
 
 /* ============================== SETUP ============================== */
@@ -159,15 +172,64 @@ function resize(){ DPR = Math.min(devicePixelRatio || 1, 2); W = innerWidth; H =
 addEventListener('resize', resize); resize();
 
 let mouseX = W / 2, mouseY = H / 2, mouseDown = false;
-let paused = false, flash = 0, shake = 0;
-let dust = 0, systemNum = 1, planetsDestroyed = 0;
+let paused = false, flash = 0, shake = 0, timeScale = 1;
+let dust = 0, systemNum = 1, totalDestroyed = 0, bestSystem = 1;
+let nova = 0, novaReadyPing = false;
+const combo = { count: 0, t: 0 };
+let ach = {};
 const cam = { x: 0, y: -1400, zoom: 0.7, tzoom: 0.7 };
 const SUN_R = 210;
 
 const ship = { x: 0, y: -1400, vx: 0, vy: 0, angle: 0, hull: 100, energy: 100, dead: false, deadT: 0, invuln: 3, hurtT: 0 };
 
 let planets = [], projectiles = [], particles = [], shards = [], shockwaves = [], popups = [], holes = [], bolts = [], turretShots = [], asteroidQueue = [];
+let comets = [], cometT = 18, nebulas = [];
 let beamHit = null; // {x,y,px,py} this frame, for rendering
+
+/* ============================== SAVE ============================== */
+const SAVE_KEY = 'planetDestroyer.save.v1';
+let saveDirty = false, saveCd = 0, wiping = false;
+function markSave(){ saveDirty = true; }
+function doSave(){
+  if (wiping) return;
+  try{
+    localStorage.setItem(SAVE_KEY, JSON.stringify({
+      dust: Math.floor(dust), systemNum, nova: Math.floor(nova),
+      upg: UPG.map(u => u.lvl), unlocked: GADGETS.map(g => g.unlocked),
+      totalDestroyed, bestSystem, ach,
+    }));
+  }catch(_){}
+  saveDirty = false; saveCd = 3;
+}
+function loadSave(){
+  try{
+    const s = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
+    if (!s) return;
+    dust = s.dust || 0; systemNum = Math.max(1, s.systemNum || 1); nova = s.nova || 0;
+    (s.upg || []).forEach((l, i) => { if (UPG[i]) UPG[i].lvl = l || 0; });
+    (s.unlocked || []).forEach((u, i) => { if (GADGETS[i] && u) GADGETS[i].unlocked = true; });
+    totalDestroyed = s.totalDestroyed || 0; bestSystem = s.bestSystem || 1;
+    ach = s.ach || {};
+  }catch(_){}
+}
+let resetArmed = false;
+function resetSaveClick(){
+  if (!resetArmed){
+    resetArmed = true;
+    const b = document.getElementById('resetbtn');
+    if (b) b.textContent = '⚠️ TAP AGAIN TO WIPE EVERYTHING';
+    return;
+  }
+  wiping = true;
+  try{ localStorage.removeItem(SAVE_KEY); }catch(_){}
+  location.reload();
+}
+window.resetSaveClick = resetSaveClick;
+
+/* ============================== TOASTS / ACHIEVEMENTS ============================== */
+let toastQ = [], toastT = 0;
+function toast(msg){ toastQ.push(msg); }
+function achieve(id, msg){ if (ach[id]) return; ach[id] = 1; toast('🏆 ' + msg); markSave(); }
 
 /* ============================== UPGRADES ============================== */
 const UPG = [
@@ -202,11 +264,34 @@ let curGadget = 0;
 const PALETTES = [
   [200, 65], [15, 70], [120, 45], [280, 55], [35, 80], [330, 60], [170, 55], [55, 75],
 ];
+function genSurface(p, rng){
+  if (p.gas){
+    const bands = randInt(4, 7);
+    for (let b = 0; b < bands; b++) p.features.push({ y: -1 + 2 * (b + 0.5) / bands, h: 1.6 / bands, dh: rand(-18, 18), da: rand(0.06, 0.2) });
+  } else {
+    for (let cN = 0; cN < randInt(5, 9); cN++){ const a2 = rng() * TAU, d = 0.15 + rng() * 0.75; p.features.push({ x: Math.cos(a2) * d, y: Math.sin(a2) * d, r: 0.06 + rng() * 0.13 }); }
+  }
+  for (let ck = 0; ck < 10; ck++){
+    const a0 = rng() * TAU, pts = [];
+    let cx = Math.cos(a0), cy = Math.sin(a0), ca = a0 + Math.PI;
+    pts.push([cx, cy]);
+    for (let s = 0; s < 6; s++){
+      ca += (rng() - 0.5) * 1.4;
+      const step = 0.13 + rng() * 0.12;
+      cx += Math.cos(ca) * step; cy += Math.sin(ca) * step;
+      pts.push([cx, cy]);
+    }
+    p.cracks.push(pts);
+  }
+}
 function spawnSystem(n){
-  planets = []; projectiles = []; holes = []; bolts = []; turretShots = []; asteroidQueue = []; beamHit = null;
+  planets = []; projectiles = []; holes = []; bolts = []; turretShots = []; asteroidQueue = []; comets = []; beamHit = null;
+  cometT = rand(10, 20);
   const count = 4 + Math.min(n, 6);
+  let maxOrbit = 620;
   for (let i = 0; i < count; i++){
     const orbit = 620 + i * rand(360, 470);
+    maxOrbit = orbit;
     const radius = rand(46, 88 + n * 7);
     const [hue, sat] = PALETTES[randInt(0, PALETTES.length - 1)];
     const seed = randInt(1, 1e9);
@@ -219,37 +304,54 @@ function spawnSystem(n){
       hp: 0, maxHp: Math.floor(radius * (13 + 6 * n)),
       ring: rng() < 0.3, ringHue: (hue + 40) % 360,
       features: [], cracks: [], turrets: [],
+      parent: null, boss: false, shield: 0, maxShield: 0, shieldT: 0, chainT: 0,
     };
     p.hp = p.maxHp;
-    if (gas){
-      const bands = randInt(4, 7);
-      for (let b = 0; b < bands; b++) p.features.push({ y: -1 + 2 * (b + 0.5) / bands, h: 1.6 / bands, dh: rand(-18, 18), da: rand(0.06, 0.2) });
-    } else {
-      for (let cN = 0; cN < randInt(5, 9); cN++){ const a2 = rng() * TAU, d = 0.15 + rng() * 0.75; p.features.push({ x: Math.cos(a2) * d, y: Math.sin(a2) * d, r: 0.06 + rng() * 0.13 }); }
-    }
-    for (let ck = 0; ck < 10; ck++){
-      const a0 = rng() * TAU, pts = [];
-      let cx = Math.cos(a0), cy = Math.sin(a0), ca = a0 + Math.PI;
-      pts.push([cx, cy]);
-      for (let s = 0; s < 6; s++){
-        ca += (rng() - 0.5) * 1.4;
-        const step = 0.13 + rng() * 0.12;
-        cx += Math.cos(ca) * step; cy += Math.sin(ca) * step;
-        pts.push([cx, cy]);
-      }
-      p.cracks.push(pts);
-    }
+    genSurface(p, rng);
     if (n >= 2){
       const tcount = Math.min(1 + Math.floor((n - 2) / 2) + (radius > 75 ? 1 : 0), 4);
       for (let t = 0; t < tcount; t++) p.turrets.push({ a: rand(0, TAU), t: rand(1, 3.5) });
     }
     planets.push(p);
   }
+  // every 3rd system, the outermost planet is a shielded CORE WORLD
+  if (n % 3 === 0){
+    const b = planets[planets.length - 1];
+    b.boss = true; b.gas = false; b.hue = 358; b.sat = 78;
+    b.radius = 115 + Math.min(n * 4, 50);
+    b.maxHp = Math.floor(b.radius * (13 + 6 * n) * 2.4); b.hp = b.maxHp;
+    b.maxShield = Math.floor(b.maxHp * 0.4); b.shield = b.maxShield;
+    b.ring = true; b.ringHue = 40;
+    b.features = [];
+    const rng2 = mulberry32(b.seed + 1);
+    for (let cN = 0; cN < 8; cN++){ const a2 = rng2() * TAU, d = 0.15 + rng2() * 0.75; b.features.push({ x: Math.cos(a2) * d, y: Math.sin(a2) * d, r: 0.05 + rng2() * 0.1 }); }
+    b.turrets = [];
+    for (let t = 0; t < 5; t++) b.turrets.push({ a: t / 5 * TAU, t: rand(1, 2.5) });
+  }
+  // moons on big planets — they chain-explode with their parent
+  for (const par of planets.slice()){
+    if (par.boss || par.radius < 60 || Math.random() > 0.45) continue;
+    const rng3 = mulberry32(par.seed + 7);
+    const m = {
+      orbit: par.radius + rand(46, 78), a: rand(0, TAU), spd: rand(0.35, 0.6) * (Math.random() < 0.5 ? -1 : 1),
+      x: par.x, y: par.y, radius: rand(13, 20), rot: rand(0, TAU), spin: rand(-0.4, 0.4),
+      hue: (par.hue + 30) % 360, sat: 30, gas: false, seed: par.seed + 7, flash: 0, dead: false,
+      hp: 0, maxHp: 0, ring: false, ringHue: 0, features: [], cracks: [], turrets: [],
+      parent: par, boss: false, shield: 0, maxShield: 0, shieldT: 0, chainT: 0,
+    };
+    m.maxHp = Math.floor(m.radius * (13 + 6 * n)); m.hp = m.maxHp;
+    genSurface(m, rng3);
+    planets.push(m);
+  }
+  nebulas = [];
+  for (let k = 0; k < 4; k++) nebulas.push({ x: rand(-maxOrbit, maxOrbit), y: rand(-maxOrbit, maxOrbit), r: rand(500, 1100), hue: rand(170, 330), a: rand(0.05, 0.1) });
   for (const g of GADGETS) g.timer = 0;
+  if (planets.some(p => p.boss)){ toast('⚠️ CORE WORLD DETECTED — shields up'); sfx.alarm(); }
 }
 
 /* ============================== FX ============================== */
 function addParticles(x, y, n, hue, speed, size, life){
+  if (particles.length > 700) n = Math.ceil(n / 4); // keep phones at 60fps
   for (let i = 0; i < n; i++){
     const a = rand(0, TAU), v = rand(speed * 0.2, speed);
     particles.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: rand(life * 0.5, life), maxLife: life, size: rand(size * 0.5, size), hue: hue + rand(-20, 20) });
@@ -258,9 +360,20 @@ function addParticles(x, y, n, hue, speed, size, life){
 function addShockwave(x, y, vr, maxR, width, hue){ shockwaves.push({ x, y, r: 10, vr, maxR, width, hue, life: 1 }); }
 function popup(x, y, text, color, size){ popups.push({ x, y, text, color, size: size || 15, life: 1.4, vy: -55 }); }
 
+let novaLock = false;
 function damagePlanet(p, amt, hx, hy, silentNum){
   if (p.dead) return;
-  const dmg = amt * dmgMult();
+  let dmg = amt * dmgMult();
+  if (!novaLock) nova = Math.min(100, nova + dmg / p.maxHp * 7);
+  if (p.shield > 0){
+    const absorbed = Math.min(p.shield, dmg);
+    p.shield -= absorbed; dmg -= absorbed; p.shieldT = 3.5;
+    if (hx !== undefined) addParticles(hx, hy, 4, 195, 280, 3.5, 0.4);
+    if (dmg <= 0){
+      if (!silentNum && Math.random() < 0.25) popup(p.x + rand(-30, 30), p.y - p.radius - 14, 'SHIELD', '#7ad8ff', 12);
+      return;
+    }
+  }
   p.hp -= dmg;
   p.flash = Math.min(p.flash + dmg / p.maxHp * 3, 1);
   if (hx !== undefined) addParticles(hx, hy, 4, p.hue, 220, 3.5, 0.5);
@@ -268,8 +381,26 @@ function damagePlanet(p, amt, hx, hy, silentNum){
   if (p.hp <= 0) p.dead = true;
 }
 function destroyPlanet(p){
-  const reward = Math.floor(p.radius * (6 + 2 * systemNum));
-  dust += reward; planetsDestroyed++;
+  combo.t = 4; combo.count++;
+  const mult = Math.min(1 + 0.5 * (combo.count - 1), 3);
+  const reward = Math.floor(p.radius * (6 + 2 * systemNum) * mult * (p.boss ? 4 : 1));
+  dust += reward; totalDestroyed++;
+  nova = Math.min(100, nova + (p.boss ? 30 : 14));
+  timeScale = Math.min(timeScale, p.boss ? 0.22 : 0.4); // slow-mo kill punch
+  buzz(p.boss ? [70, 40, 130] : 45);
+  markSave();
+  achieve('first', 'FIRST BLOOD — a planet falls');
+  if (combo.count >= 2){
+    popup(p.x, p.y - p.radius - 44, 'COMBO x' + combo.count + '  💠x' + mult.toFixed(1), '#ff8ae0', 20);
+    sfx.combo(combo.count);
+    if (combo.count >= 3) achieve('combo3', 'CHAIN REACTION — combo x3');
+  }
+  if (p.boss){
+    toast('👑 CORE WORLD DESTROYED  +' + reward + ' 💠');
+    achieve('boss', 'WORLD BREAKER — core world destroyed');
+  }
+  if (totalDestroyed >= 25) achieve('d25', 'EXTINCTION EVENT — 25 planets destroyed');
+  for (const m of planets){ if (m.parent === p && !m.dead) m.chainT = 0.3; }
   popup(p.x, p.y - p.radius, '+' + reward + ' 💠', '#7ae3ff', 24);
   addParticles(p.x, p.y, 130, p.hue, 620, 7, 1.6);
   addParticles(p.x, p.y, 50, 40, 800, 5, 1.0);
@@ -287,6 +418,7 @@ function destroyPlanet(p){
 
 /* ============================== FIRING ============================== */
 function mouseWorld(){ return { x: (mouseX - W / 2) / cam.zoom + cam.x, y: (mouseY - H / 2) / cam.zoom + cam.y }; }
+function outerRadius(){ let r = 1200; for (const p of planets){ if (!p.parent) r = Math.max(r, p.orbit); } return r; }
 function spend(cost){
   if (ship.energy < cost){ enFlash = 0.4; sfx.deny(); return false; }
   ship.energy -= cost; return true;
@@ -306,11 +438,13 @@ function fireGadget(dt){
     if (ship.energy < cost){ enFlash = 0.4; return; }
     ship.energy -= cost;
     const dx = Math.cos(ship.angle), dy = Math.sin(ship.angle);
-    let bestT = 2400, hit = null;
-    for (const p of planets){ if (p.dead) continue; const t = rayCircle(ship.x, ship.y, dx, dy, p.x, p.y, p.radius); if (t !== null && t < bestT){ bestT = t; hit = p; } }
+    let bestT = 2400, hit = null, hitCom = null;
+    for (const p of planets){ if (p.dead) continue; const t = rayCircle(ship.x, ship.y, dx, dy, p.x, p.y, p.radius); if (t !== null && t < bestT){ bestT = t; hit = p; hitCom = null; } }
+    for (const c of comets){ if (c.hp <= 0) continue; const t = rayCircle(ship.x, ship.y, dx, dy, c.x, c.y, c.r); if (t !== null && t < bestT){ bestT = t; hit = null; hitCom = c; } }
     const ex = ship.x + dx * bestT, ey = ship.y + dy * bestT;
     beamHit = { px: ship.x + dx * 20, py: ship.y + dy * 20, x: ex, y: ey };
     if (hit){ damagePlanet(hit, 150 * dt, ex, ey, true); if (Math.random() < 0.4) addParticles(ex, ey, 2, 320, 300, 4, 0.4); }
+    if (hitCom) hitComet(hitCom, 150 * dt, ex, ey);
     if (Math.random() < dt * 8) sfx.laser();
     return;
   }
@@ -356,6 +490,49 @@ function fireGadget(dt){
     sfx.hole();
   }
 }
+function fireNova(){
+  if (nova < 100 || ship.dead || paused) return;
+  novaReadyPing = false;
+  novaLock = true;
+  for (const p of planets){
+    if (p.dead) continue;
+    if (dist(ship.x, ship.y, p.x, p.y) < 1900 + p.radius){
+      if (p.maxShield) p.shield = Math.max(0, p.shield - p.maxShield * 0.6);
+      damagePlanet(p, (p.maxHp * 0.45 + 400) / dmgMult(), p.x, p.y);
+    }
+  }
+  novaLock = false;
+  nova = 0;
+  for (const c of comets){ if (dist(ship.x, ship.y, c.x, c.y) < 1900) c.hp = 0; }
+  addShockwave(ship.x, ship.y, 2600, 2100, 30, 300);
+  addShockwave(ship.x, ship.y, 1900, 1700, 18, 195);
+  addShockwave(ship.x, ship.y, 1300, 1300, 10, 45);
+  addParticles(ship.x, ship.y, 120, 300, 900, 7, 1.4);
+  flash = 0.85; shake = Math.min(shake + 30, 45); timeScale = 0.25;
+  buzz([120, 60, 160]); sfx.boomBig(); sfx.warp();
+  achieve('nova', 'SUPERNOVA — unleashed the big one');
+  markSave();
+}
+window.fireNova = fireNova;
+
+function spawnComet(){
+  let worldR = 2000;
+  for (const p of planets){ if (!p.parent) worldR = Math.max(worldR, p.orbit); }
+  worldR += 700;
+  const a = rand(0, TAU);
+  const ta = a + Math.PI + rand(-0.5, 0.5);
+  comets.push({
+    x: Math.cos(a) * worldR, y: Math.sin(a) * worldR,
+    vx: Math.cos(ta) * rand(300, 430), vy: Math.sin(ta) * rand(300, 430),
+    r: 15, hp: 110 * (1 + 0.4 * systemNum), maxR: worldR * 1.5, hue: rand(160, 200),
+  });
+  toast('☄️ COMET SPOTTED — shoot it for bonus dust');
+}
+function hitComet(c, dmg, hx, hy){
+  c.hp -= dmg * dmgMult();
+  addParticles(hx, hy, 5, c.hue, 260, 3.5, 0.5);
+  nova = Math.min(100, nova + 1);
+}
 function explodeNuke(n){
   const R = 430;
   for (const p of planets){ if (p.dead) continue; if (dist(n.x, n.y, p.x, p.y) < R + p.radius) damagePlanet(p, n.dmg, p.x, p.y); }
@@ -373,7 +550,7 @@ function update(dt){
     ship.deadT -= dt;
     if (ship.deadT <= 0){
       ship.dead = false; ship.hull = maxHull(); ship.energy = maxEnergy(); ship.invuln = 3;
-      const a = rand(0, TAU); const safeR = (planets.length ? planets[planets.length-1].orbit : 1200) + 500;
+      const a = rand(0, TAU); const safeR = outerRadius() + 500;
       ship.x = Math.cos(a) * safeR; ship.y = Math.sin(a) * safeR; ship.vx = ship.vy = 0;
       hideBanner();
     }
@@ -408,12 +585,24 @@ function update(dt){
   for (const g of GADGETS) g.timer = Math.max(0, g.timer - dt);
   enFlash = Math.max(0, enFlash - dt);
 
-  // planets orbit
+  // planets orbit (moons orbit their parent)
   for (const p of planets){
     p.a += p.spd * dt;
-    p.x = Math.cos(p.a) * p.orbit; p.y = Math.sin(p.a) * p.orbit;
+    if (p.parent){
+      p.x = p.parent.x + Math.cos(p.a) * p.orbit; p.y = p.parent.y + Math.sin(p.a) * p.orbit;
+    } else {
+      p.x = Math.cos(p.a) * p.orbit; p.y = Math.sin(p.a) * p.orbit;
+    }
     p.rot += p.spin * dt;
     p.flash = Math.max(0, p.flash - dt * 2.5);
+    if (p.chainT > 0){
+      p.chainT -= dt;
+      if (p.chainT <= 0 && !p.dead){ p.hp = 0; p.dead = true; }
+    }
+    if (p.maxShield && !p.dead){
+      p.shieldT -= dt;
+      if (p.shieldT <= 0 && p.shield < p.maxShield) p.shield = Math.min(p.maxShield, p.shield + p.maxShield * 0.1 * dt);
+    }
     for (const t of p.turrets){
       t.t -= dt;
       if (t.t <= 0 && !ship.dead){
@@ -422,10 +611,32 @@ function update(dt){
           const lead = dist(tx, ty, ship.x, ship.y) / 300;
           const aimA = Math.atan2(ship.y + ship.vy * lead * 0.6 - ty, ship.x + ship.vx * lead * 0.6 - tx);
           turretShots.push({ x: tx, y: ty, vx: Math.cos(aimA) * 300, vy: Math.sin(aimA) * 300, life: 6 });
-          t.t = rand(2.2, 3.8) / (1 + systemNum * 0.06);
+          t.t = (p.boss ? rand(1.3, 2.1) : rand(2.2, 3.8)) / (1 + systemNum * 0.06);
         } else t.t = 0.5;
       }
     }
+  }
+
+  // combo window
+  if (combo.t > 0){ combo.t -= dt; if (combo.t <= 0) combo.count = 0; }
+
+  // comets
+  cometT -= dt;
+  if (cometT <= 0 && comets.length < 2 && planets.length > 0){ spawnComet(); cometT = rand(22, 38); }
+  for (let i = comets.length - 1; i >= 0; i--){
+    const c = comets[i];
+    c.x += c.vx * dt; c.y += c.vy * dt;
+    if (Math.random() < 0.8) particles.push({ x: c.x, y: c.y, vx: -c.vx * 0.12 + rand(-20, 20), vy: -c.vy * 0.12 + rand(-20, 20), life: 0.8, maxLife: 0.8, size: 3.5, hue: c.hue });
+    if (c.hp <= 0){
+      const reward = Math.floor(140 * (1 + 0.5 * systemNum));
+      dust += reward; markSave();
+      popup(c.x, c.y - 24, '☄️ +' + reward + ' 💠', '#8af0ff', 20);
+      addParticles(c.x, c.y, 40, c.hue, 500, 5, 1);
+      addShockwave(c.x, c.y, 700, 300, 8, c.hue);
+      sfx.boomSmall(); buzz(30);
+      comets.splice(i, 1); continue;
+    }
+    if (Math.hypot(c.x, c.y) < SUN_R || Math.hypot(c.x, c.y) > c.maxR){ comets.splice(i, 1); }
   }
 
   // asteroid queue
@@ -463,6 +674,13 @@ function update(dt){
     pr.x += pr.vx * dt; pr.y += pr.vy * dt;
     // sun eats projectiles
     if (Math.hypot(pr.x, pr.y) < SUN_R){ projectiles.splice(i, 1); continue; }
+    let hitC = null;
+    for (const c of comets){ if (c.hp > 0 && dist(pr.x, pr.y, c.x, c.y) < c.r + (pr.size || 6)){ hitC = c; break; } }
+    if (hitC){
+      hitComet(hitC, pr.dmg, pr.x, pr.y);
+      if (pr.type === 'nuke') explodeNuke(pr);
+      projectiles.splice(i, 1); continue;
+    }
     let hitP = null;
     for (const p of planets){ if (!p.dead && dist(pr.x, pr.y, p.x, p.y) < p.radius + (pr.size || 6)){ hitP = p; break; } }
     if (hitP){
@@ -567,6 +785,7 @@ function hurtShip(amt, silent){
   if (ship.hull <= 0){
     ship.dead = true; ship.deadT = 3;
     const lost = Math.floor(dust * 0.05); dust -= lost;
+    buzz([80, 50, 80]); markSave();
     addParticles(ship.x, ship.y, 70, 15, 500, 6, 1.2);
     addShockwave(ship.x, ship.y, 800, 400, 10, 15);
     shake = Math.min(shake + 20, 45);
@@ -576,10 +795,14 @@ function hurtShip(amt, silent){
 }
 function warp(){
   systemNum++;
+  bestSystem = Math.max(bestSystem, systemNum);
+  if (systemNum >= 5) achieve('sys5', 'DEEP SPACE — reached system 5');
+  combo.count = 0; combo.t = 0;
+  markSave();
   sfx.warp();
   flash = 0.9; shake = 15;
   spawnSystem(systemNum);
-  const a = rand(0, TAU), r = planets[planets.length - 1].orbit + 500;
+  const a = rand(0, TAU), r = outerRadius() + 500;
   ship.x = Math.cos(a) * r; ship.y = Math.sin(a) * r; ship.vx = ship.vy = 0;
   ship.hull = maxHull(); ship.energy = maxEnergy(); ship.invuln = 3;
   cam.x = ship.x; cam.y = ship.y;
@@ -615,9 +838,18 @@ function render(){
   ctx.scale(cam.zoom, cam.zoom);
   ctx.translate(-cam.x, -cam.y);
 
+  // nebulas
+  for (const nb of nebulas){
+    const ng = ctx.createRadialGradient(nb.x, nb.y, 0, nb.x, nb.y, nb.r);
+    ng.addColorStop(0, 'hsla(' + nb.hue + ',70%,55%,' + nb.a + ')');
+    ng.addColorStop(1, 'hsla(' + nb.hue + ',70%,55%,0)');
+    ctx.fillStyle = ng;
+    ctx.beginPath(); ctx.arc(nb.x, nb.y, nb.r, 0, TAU); ctx.fill();
+  }
+
   // orbit rings
   ctx.strokeStyle = 'rgba(120,180,255,0.07)'; ctx.lineWidth = 2 / cam.zoom;
-  for (const p of planets){ ctx.beginPath(); ctx.arc(0, 0, p.orbit, 0, TAU); ctx.stroke(); }
+  for (const p of planets){ if (p.parent) continue; ctx.beginPath(); ctx.arc(0, 0, p.orbit, 0, TAU); ctx.stroke(); }
 
   // sun
   const pulse = 1 + Math.sin(time * 1.7) * 0.03;
@@ -743,6 +975,20 @@ function render(){
     ctx.shadowBlur = 0;
   }
 
+  // comets
+  for (const c of comets){
+    ctx.save(); ctx.translate(c.x, c.y);
+    const ta2 = Math.atan2(c.vy, c.vx);
+    const tg = ctx.createLinearGradient(0, 0, -Math.cos(ta2) * 130, -Math.sin(ta2) * 130);
+    tg.addColorStop(0, 'hsla(' + c.hue + ',90%,70%,0.6)');
+    tg.addColorStop(1, 'hsla(' + c.hue + ',90%,70%,0)');
+    ctx.strokeStyle = tg; ctx.lineWidth = 10; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-Math.cos(ta2) * 130, -Math.sin(ta2) * 130); ctx.stroke();
+    ctx.fillStyle = '#dff8ff'; ctx.shadowColor = 'hsl(' + c.hue + ',90%,70%)'; ctx.shadowBlur = 18;
+    ctx.beginPath(); ctx.arc(0, 0, c.r * 0.7, 0, TAU); ctx.fill();
+    ctx.restore();
+  }
+
   // particles
   ctx.save(); ctx.globalCompositeOperation = 'lighter';
   for (const p of particles){
@@ -813,6 +1059,12 @@ function render(){
 
 function drawPlanet(p){
   ctx.save(); ctx.translate(p.x, p.y);
+  // atmosphere glow
+  let ag = ctx.createRadialGradient(0, 0, p.radius * 0.95, 0, 0, p.radius * 1.45);
+  ag.addColorStop(0, 'hsla(' + p.hue + ',' + p.sat + '%,60%,0.22)');
+  ag.addColorStop(1, 'hsla(' + p.hue + ',' + p.sat + '%,60%,0)');
+  ctx.fillStyle = ag;
+  ctx.beginPath(); ctx.arc(0, 0, p.radius * 1.45, 0, TAU); ctx.fill();
   if (p.ring){
     ctx.save(); ctx.rotate(0.4);
     ctx.strokeStyle = 'hsla(' + p.ringHue + ',60%,60%,0.35)'; ctx.lineWidth = p.radius * 0.22;
@@ -869,12 +1121,32 @@ function drawPlanet(p){
     ctx.fillStyle = '#ff5a5a'; ctx.beginPath(); ctx.arc(0, 0, 2.5, 0, TAU); ctx.fill();
     ctx.restore();
   }
-  // hp bar when damaged
-  if (p.hp < p.maxHp){
+  // boss shield bubble
+  if (p.maxShield && p.shield > 0){
+    const sf = p.shield / p.maxShield;
+    ctx.strokeStyle = 'rgba(120,220,255,' + (0.25 + 0.45 * sf).toFixed(2) + ')';
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(0, 0, p.radius + 12 + Math.sin(time * 5) * 2, 0, TAU); ctx.stroke();
+    ctx.strokeStyle = 'rgba(120,220,255,' + (0.12 * sf).toFixed(2) + ')';
+    ctx.lineWidth = 8;
+    ctx.beginPath(); ctx.arc(0, 0, p.radius + 16, 0, TAU); ctx.stroke();
+  }
+  // hp bar when damaged (boss always shows; shield bar above)
+  if (p.hp < p.maxHp || p.boss){
     const bw = p.radius * 1.6;
-    ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(-bw / 2, -p.radius - 18, bw, 6);
+    ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(-bw / 2, -p.radius - 20, bw, 6);
     ctx.fillStyle = p.hp / p.maxHp > 0.35 ? '#6dff8a' : '#ff6d5a';
-    ctx.fillRect(-bw / 2, -p.radius - 18, bw * clamp(p.hp / p.maxHp, 0, 1), 6);
+    ctx.fillRect(-bw / 2, -p.radius - 20, bw * clamp(p.hp / p.maxHp, 0, 1), 6);
+    if (p.maxShield){
+      ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(-bw / 2, -p.radius - 30, bw, 5);
+      ctx.fillStyle = '#7ad8ff';
+      ctx.fillRect(-bw / 2, -p.radius - 30, bw * clamp(p.shield / p.maxShield, 0, 1), 5);
+    }
+    if (p.boss){
+      ctx.textAlign = 'center'; ctx.font = 'bold 13px Segoe UI, sans-serif';
+      ctx.fillStyle = '#ff9d8a';
+      ctx.fillText('⚠ CORE WORLD', 0, -p.radius - 38);
+    }
   }
   ctx.restore();
 }
@@ -893,8 +1165,10 @@ function drawMinimap(){
   for (const p of planets){
     ctx.fillStyle = 'hsl(' + p.hue + ',' + p.sat + '%,55%)';
     ctx.beginPath(); ctx.arc(mx + p.x * sc, my + p.y * sc, Math.max(2.5, p.radius * sc), 0, TAU); ctx.fill();
+    if (p.boss){ ctx.strokeStyle = '#ff5a5a'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(mx + p.x * sc, my + p.y * sc, Math.max(4.5, p.radius * sc + 2), 0, TAU); ctx.stroke(); }
   }
   for (const h of holes){ ctx.fillStyle = '#a04dff'; ctx.beginPath(); ctx.arc(mx + h.x * sc, my + h.y * sc, 3, 0, TAU); ctx.fill(); }
+  for (const c of comets){ ctx.fillStyle = '#bff5ff'; ctx.beginPath(); ctx.arc(mx + c.x * sc, my + c.y * sc, 2.5, 0, TAU); ctx.fill(); }
   if (!ship.dead){
     ctx.save(); ctx.translate(mx + ship.x * sc, my + ship.y * sc); ctx.rotate(ship.angle);
     ctx.fillStyle = '#fff';
@@ -923,7 +1197,13 @@ function buildHotbar(){
   });
 }
 function updateHud(){
-  statsEl.innerHTML = '💠 <b>' + Math.floor(dust) + '</b> dust<br>🌌 System <b>' + systemNum + '</b> &nbsp; 🪐 ' + planets.length + ' left<br>💥 ' + planetsDestroyed + ' planets destroyed';
+  statsEl.innerHTML = '💠 <b>' + Math.floor(dust) + '</b> dust<br>🌌 System <b>' + systemNum + '</b> &nbsp; 🪐 ' + planets.length + ' left<br>💥 ' + totalDestroyed + ' destroyed · 🏅 best ' + bestSystem;
+  const nb = document.getElementById('novabtn');
+  nb.style.opacity = (0.3 + 0.65 * nova / 100).toFixed(2);
+  if (nova >= 100){
+    if (!nb.classList.contains('ready')){ nb.classList.add('ready'); }
+    if (!novaReadyPing){ novaReadyPing = true; sfx.novaReady(); toast('💥 SUPERNOVA READY'); buzz([40, 30, 40]); }
+  } else nb.classList.remove('ready');
   hullFill.style.width = clamp(ship.hull / maxHull() * 100, 0, 100) + '%';
   enFill.style.width = clamp(ship.energy / maxEnergy() * 100, 0, 100) + '%';
   enBar.classList.toggle('enlow', enFlash > 0);
@@ -958,19 +1238,23 @@ function renderShop(){
     html += '<div class="row"><span><b>' + u.name + '</b> <span style="color:var(--cy)">Lv.' + u.lvl + '</span><small>' + u.desc + '</small></span><button class="buy' + (dust >= upgCost(u) ? '' : ' no') + '" onclick="buyUpg(' + i + ')">' + upgCost(u) + ' 💠</button></div>';
   });
   html += '<p style="text-align:center;margin-bottom:0"><button class="btn" onclick="closeShop()">CLOSE</button></p>';
+  html += '<p style="text-align:center;margin:10px 0 0"><button class="buy" id="resetbtn" onclick="resetSaveClick()" style="border-color:#ff6d5a;color:#ff9d8a;background:rgba(255,90,90,.1)">🗑 RESET SAVE</button></p>';
   shopEl.innerHTML = html;
 }
 function buyGadget(i){
   const g2 = GADGETS[i];
   if (g2.unlocked || dust < g2.price){ sfx.deny(); return; }
   dust -= g2.price; g2.unlocked = true; curGadget = i;
+  markSave();
   sfx.buy(); buildHotbar(); renderShop();
   popup(ship.x, ship.y - 40, g2.icon + ' ' + g2.name + ' ACQUIRED!', '#ffd27a', 18);
+  if (GADGETS.every(g3 => g3.unlocked)) achieve('arsenal', 'FULL ARSENAL — all gadgets owned');
 }
 function buyUpg(i){
   const u = UPG[i], c = upgCost(u);
   if (dust < c){ sfx.deny(); return; }
   dust -= c; u.lvl++;
+  markSave();
   sfx.buy(); renderShop();
 }
 window.buyGadget = buyGadget; window.buyUpg = buyUpg; window.closeShop = closeShop;
@@ -1008,7 +1292,10 @@ cv.addEventListener('pointerup', endPointer);
 cv.addEventListener('pointercancel', endPointer);
 cv.addEventListener('contextmenu', e => e.preventDefault());
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden && !helpOpen && !shopOpen && !gateOpen) toggleHelp(); // acts as pause with a resume button
+  if (document.hidden){
+    doSave();
+    if (!helpOpen && !shopOpen && !gateOpen) toggleHelp(); // acts as pause with a resume button
+  }
 });
 const boostBtn = document.getElementById('boostbtn');
 boostBtn.addEventListener('pointerdown', e => { e.preventDefault(); ac(); touchBoost = true; });
@@ -1027,10 +1314,15 @@ function closeGate(){
 }
 window.closeGate = closeGate;
 
-spawnSystem(1);
-{ const a = rand(0, TAU), r = planets[planets.length - 1].orbit + 500;
+loadSave();
+spawnSystem(systemNum);
+ship.hull = maxHull(); ship.energy = maxEnergy();
+{ let r = 1200;
+  for (const p of planets){ if (!p.parent) r = Math.max(r, p.orbit); }
+  const a = rand(0, TAU); r += 500;
   ship.x = Math.cos(a) * r; ship.y = Math.sin(a) * r; cam.x = ship.x; cam.y = ship.y; }
 buildHotbar();
+document.getElementById('novabtn').addEventListener('pointerdown', e => { e.preventDefault(); ac(); fireNova(); });
 if (matchMedia('(pointer: fine)').matches && !matchMedia('(pointer: coarse)').matches){
   gateOpen = true; paused = true;
   document.getElementById('deskgate').style.display = 'block';
@@ -1038,13 +1330,21 @@ if (matchMedia('(pointer: fine)').matches && !matchMedia('(pointer: coarse)').ma
   setTimeout(() => { if (!helpOpen && !shopOpen) toggleHelp(); }, 400);
 }
 
+const toastEl = document.getElementById('toast');
 let last = performance.now();
 function frame(t){
   const dt = Math.min((t - last) / 1000, 0.05); last = t;
   time += dt;
-  if (!paused) update(dt);
+  timeScale = lerp(timeScale, 1, 1 - Math.pow(0.03, dt));
+  if (!paused) update(dt * timeScale);
   render();
   updateHud();
+  // toasts
+  if (toastT > 0){ toastT -= dt; if (toastT <= 0) toastEl.style.display = 'none'; }
+  else if (toastQ.length){ toastEl.textContent = toastQ.shift(); toastEl.style.display = 'block'; toastT = 2.8; }
+  // throttled autosave
+  saveCd -= dt;
+  if (saveDirty && saveCd <= 0) doSave();
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
