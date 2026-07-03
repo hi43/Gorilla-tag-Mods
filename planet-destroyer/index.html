@@ -1,33 +1,33 @@
 <title>PLANET DESTROYER</title>
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <style>
   :root{ --cy:#4de3ff; --mg:#ff4dd2; --am:#ffb84d; }
-  html,body{ margin:0; padding:0; height:100%; overflow:hidden; background:#03040a; font-family:'Segoe UI',system-ui,sans-serif; user-select:none; }
-  #c{ position:fixed; inset:0; display:block; cursor:none; touch-action:none; }
-  body.touch #c{ cursor:default; }
+  html,body{ margin:0; padding:0; height:100%; overflow:hidden; background:#03040a; font-family:'Segoe UI',system-ui,sans-serif; user-select:none; -webkit-user-select:none; overscroll-behavior:none; touch-action:none; }
+  #c{ position:fixed; inset:0; display:block; touch-action:none; }
   .hud{ position:fixed; color:#cfefff; text-shadow:0 0 6px rgba(77,227,255,.6); z-index:5; pointer-events:none; }
-  #stats{ top:14px; left:16px; font-size:15px; line-height:1.55; }
-  #stats b{ color:var(--am); font-size:18px; }
-  #topbtns{ top:14px; right:16px; display:flex; gap:8px; pointer-events:auto; }
-  .btn{ background:rgba(10,25,45,.75); border:1px solid rgba(77,227,255,.4); color:#cfefff; padding:6px 12px; border-radius:8px; font-size:13px; cursor:pointer; letter-spacing:.5px; }
-  .btn:hover{ background:rgba(77,227,255,.2); }
-  #barwrap{ position:fixed; left:50%; bottom:96px; transform:translateX(-50%); width:340px; z-index:5; pointer-events:none; }
+  #stats{ top:calc(12px + env(safe-area-inset-top)); left:14px; font-size:13px; line-height:1.55; }
+  #stats b{ color:var(--am); font-size:16px; }
+  #topbtns{ top:calc(12px + env(safe-area-inset-top)); right:14px; display:flex; gap:8px; pointer-events:auto; }
+  .btn{ background:rgba(10,25,45,.75); border:1px solid rgba(77,227,255,.4); color:#cfefff; padding:9px 14px; border-radius:10px; font-size:13px; cursor:pointer; letter-spacing:.5px; }
+  .btn:active{ background:rgba(77,227,255,.25); }
+  #barwrap{ position:fixed; left:50%; bottom:calc(154px + env(safe-area-inset-bottom)); transform:translateX(-50%); width:min(52vw,300px); z-index:5; pointer-events:none; }
   .bar{ height:9px; border-radius:6px; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.15); margin-top:5px; overflow:hidden; }
   .bar>div{ height:100%; border-radius:6px; transition:width .08s linear; }
   #hullfill{ background:linear-gradient(90deg,#ff4d4d,#ff9d4d); box-shadow:0 0 8px #ff4d4d; }
   #enfill{ background:linear-gradient(90deg,#2bb0ff,#4de3ff); box-shadow:0 0 8px #4de3ff; }
   .bar.enlow>div{ background:#ff3355 !important; }
-  #hotbar{ position:fixed; left:50%; bottom:16px; transform:translateX(-50%); display:flex; gap:8px; z-index:5; }
-  .slot{ width:64px; height:64px; border-radius:12px; background:rgba(8,20,38,.85); border:2px solid rgba(77,227,255,.25); position:relative; cursor:pointer; display:flex; flex-direction:column; align-items:center; justify-content:center; transition:transform .08s, border-color .08s; }
-  .slot:hover{ transform:translateY(-4px); }
+  #hotbar{ position:fixed; left:50%; bottom:calc(12px + env(safe-area-inset-bottom)); transform:translateX(-50%); display:grid; grid-template-columns:repeat(4, 62px); gap:8px; z-index:5; }
+  .slot{ width:62px; height:62px; border-radius:14px; background:rgba(8,20,38,.85); border:2px solid rgba(77,227,255,.25); position:relative; cursor:pointer; display:flex; flex-direction:column; align-items:center; justify-content:center; }
   .slot.sel{ border-color:var(--am); box-shadow:0 0 14px rgba(255,184,77,.5); }
-  .slot .ic{ font-size:24px; line-height:1; filter:drop-shadow(0 0 4px rgba(77,227,255,.7)); }
-  .slot .nm{ font-size:8.5px; color:#9fd8ff; margin-top:4px; letter-spacing:.3px; text-align:center; }
-  .slot .key{ position:absolute; top:2px; left:5px; font-size:10px; color:#6ea8cc; }
+  .slot .ic{ font-size:23px; line-height:1; filter:drop-shadow(0 0 4px rgba(77,227,255,.7)); }
+  .slot .nm{ font-size:7.5px; color:#9fd8ff; margin-top:3px; letter-spacing:.3px; text-align:center; }
   .slot .cdo{ position:absolute; left:0; bottom:0; width:100%; background:rgba(0,10,25,.75); border-radius:0 0 10px 10px; pointer-events:none; }
   .slot.lock{ filter:grayscale(1) brightness(.65); }
   .slot .lk{ position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; font-size:11px; color:var(--am); background:rgba(0,0,0,.45); border-radius:10px; }
-  .panel{ position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); background:rgba(6,14,28,.96); border:1px solid rgba(77,227,255,.45); border-radius:16px; padding:22px 28px; color:#cfefff; z-index:20; min-width:520px; max-width:min(680px,92vw); max-height:82vh; overflow-y:auto; box-shadow:0 0 60px rgba(77,227,255,.25); display:none; }
+  .panel{ position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); background:rgba(6,14,28,.96); border:1px solid rgba(77,227,255,.45); border-radius:16px; padding:20px 22px; color:#cfefff; z-index:20; width:min(92vw,560px); max-height:80vh; overflow-y:auto; box-shadow:0 0 60px rgba(77,227,255,.25); display:none; box-sizing:border-box; touch-action:pan-y; }
   .panel h2{ margin:0 0 4px; color:var(--am); letter-spacing:2px; font-size:20px; }
   .panel h3{ color:var(--cy); margin:16px 0 8px; font-size:14px; letter-spacing:1px; }
   .row{ display:flex; align-items:center; justify-content:space-between; padding:7px 10px; border-radius:8px; background:rgba(255,255,255,.04); margin-bottom:6px; font-size:13px; }
@@ -42,32 +42,20 @@
   #banner p{ color:#cfefff; font-size:16px; letter-spacing:2px; }
   @keyframes pulse{ 50%{ opacity:.55; } }
   #vignette{ position:fixed; inset:0; pointer-events:none; z-index:3; background:radial-gradient(ellipse at center, transparent 62%, rgba(0,0,10,.55) 100%); }
-  #touchui{ display:none; }
-  body.touch #touchui{ display:block; }
   .tbtn{ width:64px; height:64px; border-radius:50%; background:rgba(10,25,45,.7); border:2px solid rgba(77,227,255,.45); color:#cfefff; font-size:24px; display:flex; align-items:center; justify-content:center; z-index:6; touch-action:none; user-select:none; -webkit-user-select:none; }
-  #boostbtn{ position:fixed; right:20px; bottom:230px; width:72px; height:72px; font-size:30px; }
-  #zoomcol{ position:fixed; right:20px; top:66px; display:flex; flex-direction:column; gap:10px; z-index:6; }
-  #zoomcol .tbtn{ width:44px; height:44px; font-size:20px; }
-  @media (max-width:760px){
-    .slot{ width:38px; height:38px; border-radius:9px; }
-    .slot .ic{ font-size:17px; }
-    .slot .nm{ display:none; }
-    .slot .lk{ font-size:8px; }
-    .slot .key{ font-size:8px; top:1px; left:3px; }
-    #hotbar{ gap:4px; bottom:10px; }
-    #barwrap{ width:230px; bottom:62px; }
-    #stats{ font-size:12px; }
-    #banner h1{ font-size:26px; letter-spacing:3px; }
-    #banner p{ font-size:13px; }
-  }
+  #boostbtn{ position:fixed; right:16px; bottom:calc(158px + env(safe-area-inset-bottom)); width:74px; height:74px; font-size:31px; }
+  #zoomcol{ position:fixed; right:16px; top:calc(64px + env(safe-area-inset-top)); display:flex; flex-direction:column; gap:10px; z-index:6; }
+  #zoomcol .tbtn{ width:46px; height:46px; font-size:20px; }
+  #banner h1{ font-size:clamp(24px,7vw,42px); letter-spacing:3px; }
+  #banner p{ font-size:14px; }
 </style>
 
 <canvas id="c"></canvas>
 <div id="vignette"></div>
 <div class="hud" id="stats"></div>
 <div class="hud" id="topbtns">
-  <button class="btn" onclick="toggleShop()">🛒 SHOP <span class="kbd">U</span></button>
-  <button class="btn" onclick="toggleHelp()">❓ HELP <span class="kbd">H</span></button>
+  <button class="btn" onclick="toggleShop()">🛒 SHOP</button>
+  <button class="btn" onclick="toggleHelp()">❓</button>
   <button class="btn" id="mutebtn" onclick="toggleMute()">🔊</button>
 </div>
 <div id="barwrap" class="hud">
@@ -79,24 +67,28 @@
 <div class="panel" id="help">
   <h2>PLANET DESTROYER</h2>
   <p style="font-size:13px;color:#8fb8d8">Shatter every planet in the system, harvest the cosmic dust, buy bigger toys, warp deeper. The universe won't demolish itself.</p>
-  <h3>CONTROLS</h3>
-  <div class="row"><span>Move ship</span><span><span class="kbd">W</span> <span class="kbd">A</span> <span class="kbd">S</span> <span class="kbd">D</span></span></div>
-  <div class="row"><span>📱 Touch: left thumb = joystick, right thumb = aim &amp; fire. 🔥 button = boost.</span></div>
-  <div class="row"><span>Afterburner (drains energy)</span><span class="kbd">SHIFT</span></div>
-  <div class="row"><span>Aim / Fire gadget</span><span>Mouse / <span class="kbd">LMB</span></span></div>
-  <div class="row"><span>Select gadget</span><span><span class="kbd">1</span>–<span class="kbd">8</span> or click hotbar</span></div>
-  <div class="row"><span>Zoom camera</span><span class="kbd">Scroll</span></div>
-  <div class="row"><span>Shop / Help / Pause / Mute</span><span><span class="kbd">U</span> <span class="kbd">H</span> <span class="kbd">P</span> <span class="kbd">M</span></span></div>
-  <div class="row"><span>Warp to next system (when cleared)</span><span class="kbd">ENTER</span></div>
+  <h3>HOW TO PLAY</h3>
+  <div class="row"><span>👈 <b>Left thumb</b> — hold the lower-left area and drag to fly your ship</span></div>
+  <div class="row"><span>👉 <b>Right thumb</b> — touch anywhere else to aim; hold to keep firing</span></div>
+  <div class="row"><span>🔥 <b>Boost button</b> — hold while flying for afterburner (drains energy)</span></div>
+  <div class="row"><span>🔫 <b>Gadget grid</b> — tap a slot to switch weapons; locked ones show their price</span></div>
+  <div class="row"><span>＋/− — zoom the camera in and out</span></div>
   <h3>TIPS</h3>
   <div class="row"><span>☀️ The star melts your hull. Planets grow defense turrets in deeper systems.<br><small>Hull slowly self-repairs when you avoid damage for a few seconds.</small></span></div>
   <div class="row"><span>🕳️ Black Holes shred everything nearby — deploy them onto fat planets.</span></div>
-  <p style="text-align:center"><button class="btn" onclick="toggleHelp()">CLOSE</button></p>
+  <p style="text-align:center"><button class="btn" onclick="toggleHelp()">LET'S GO 🚀</button></p>
 </div>
 <div id="banner"></div>
 <div id="touchui">
   <div class="tbtn" id="boostbtn">🔥</div>
   <div id="zoomcol"><div class="tbtn" id="zin">＋</div><div class="tbtn" id="zout">−</div></div>
+</div>
+<div class="panel" id="deskgate">
+  <h2>📱 MADE FOR PHONES</h2>
+  <p style="font-size:14px;color:#8fb8d8">Planet Destroyer is a touchscreen game — two thumbs, one doomed solar system. Open this on your phone:</p>
+  <p style="text-align:center;font-size:16px;color:var(--cy);letter-spacing:.5px">hi43.github.io/Gorilla-tag-Mods</p>
+  <p style="text-align:center"><button class="btn" onclick="closeGate()">PLAY HERE ANYWAY</button></p>
+  <p style="font-size:12px;color:#6d92ad;text-align:center">(drag the lower-left area with your mouse to fly, click elsewhere to shoot)</p>
 </div>
 
 <script>
@@ -166,11 +158,10 @@ let W = 0, H = 0, DPR = 1;
 function resize(){ DPR = Math.min(devicePixelRatio || 1, 2); W = innerWidth; H = innerHeight; cv.width = W * DPR; cv.height = H * DPR; cv.style.width = W + 'px'; cv.style.height = H + 'px'; }
 addEventListener('resize', resize); resize();
 
-const keys = {};
 let mouseX = W / 2, mouseY = H / 2, mouseDown = false;
 let paused = false, flash = 0, shake = 0;
 let dust = 0, systemNum = 1, planetsDestroyed = 0;
-const cam = { x: 0, y: -1400, zoom: 0.85, tzoom: 0.85 };
+const cam = { x: 0, y: -1400, zoom: 0.7, tzoom: 0.7 };
 const SUN_R = 210;
 
 const ship = { x: 0, y: -1400, vx: 0, vy: 0, angle: 0, hull: 100, energy: 100, dead: false, deadT: 0, invuln: 3, hurtT: 0 };
@@ -389,15 +380,10 @@ function update(dt){
   } else {
     const m = mouseWorld();
     ship.angle = Math.atan2(m.y - ship.y, m.x - ship.x);
-    let ax = 0, ay = 0;
-    if (keys['KeyW'] || keys['ArrowUp']) ay -= 1;
-    if (keys['KeyS'] || keys['ArrowDown']) ay += 1;
-    if (keys['KeyA'] || keys['ArrowLeft']) ax -= 1;
-    if (keys['KeyD'] || keys['ArrowRight']) ax += 1;
-    ax += joy.dx; ay += joy.dy;
+    const ax = joy.dx, ay = joy.dy;
     const mag = Math.hypot(ax, ay);
     let pow = thrustPow();
-    const boosting = (keys['ShiftLeft'] || keys['ShiftRight'] || touchBoost) && mag > 0.05 && ship.energy > 1;
+    const boosting = touchBoost && mag > 0.05 && ship.energy > 1;
     if (boosting){ pow *= 2.1; ship.energy = Math.max(0, ship.energy - (regenRate() + 14) * dt); }
     if (mag > 0.05){ const s = Math.min(mag, 1); ship.vx += ax / mag * pow * s * dt; ship.vy += ay / mag * pow * s * dt;
       if (Math.random() < 0.6) particles.push({ x: ship.x - Math.cos(ship.angle) * 14, y: ship.y - Math.sin(ship.angle) * 14, vx: -ax / mag * 160 + rand(-40, 40), vy: -ay / mag * 160 + rand(-40, 40), life: 0.4, maxLife: 0.4, size: boosting ? 5 : 3, hue: boosting ? 20 : 195 });
@@ -565,7 +551,7 @@ function update(dt){
     if (planets[i].dead){ destroyPlanet(planets[i]); planets.splice(i, 1); }
   }
   if (planets.length === 0 && !ship.dead && bannerEl.style.display !== 'block')
-    showBanner('SYSTEM ' + systemNum + ' OBLITERATED', 'Next system: tougher planets, richer dust', '<button class="btn" onclick="doWarp()">🚀 WARP NOW (ENTER)</button>');
+    showBanner('SYSTEM ' + systemNum + ' OBLITERATED', 'Next system: tougher planets, richer dust', '<button class="btn" onclick="doWarp()">🚀 WARP NOW</button>');
 
   // camera
   cam.zoom = lerp(cam.zoom, cam.tzoom, 1 - Math.pow(0.001, dt));
@@ -894,7 +880,7 @@ function drawPlanet(p){
 }
 
 function drawMinimap(){
-  const mr = 86, mx = W - mr - 18, my = H - mr - 18;
+  const mr = Math.min(64, W * 0.16), mx = mr + 16, my = mr + 148;
   let worldR = 1400;
   for (const p of planets) worldR = Math.max(worldR, p.orbit + 200);
   worldR = Math.max(worldR, Math.hypot(ship.x, ship.y) + 200);
@@ -928,7 +914,7 @@ function buildHotbar(){
   GADGETS.forEach((g2, i) => {
     const d = document.createElement('div');
     d.className = 'slot' + (i === curGadget ? ' sel' : '') + (g2.unlocked ? '' : ' lock');
-    d.innerHTML = '<span class="key">' + (i + 1) + '</span><span class="ic">' + g2.icon + '</span><span class="nm">' + g2.name.toUpperCase() + '</span>'
+    d.innerHTML = '<span class="ic">' + g2.icon + '</span><span class="nm">' + g2.name.toUpperCase() + '</span>'
       + '<div class="cdo" data-i="' + i + '" style="height:0"></div>'
       + (g2.unlocked ? '' : '<span class="lk">🔒<span>' + g2.price + '💠</span></span>');
     d.title = g2.name + ' — ' + g2.desc;
@@ -952,13 +938,13 @@ window.doWarp = () => { if (planets.length === 0 && !ship.dead) warp(); };
 function hideBanner(){ bannerEl.style.display = 'none'; }
 
 function openShop(){ shopOpen = true; helpOpen = false; helpEl.style.display = 'none'; renderShop(); shopEl.style.display = 'block'; paused = true; }
-function closeShop(){ shopOpen = false; shopEl.style.display = 'none'; paused = helpOpen; }
+function closeShop(){ shopOpen = false; shopEl.style.display = 'none'; paused = helpOpen || gateOpen; }
 function toggleShop(){ shopOpen ? closeShop() : openShop(); }
 function toggleHelp(){
   helpOpen = !helpOpen;
   helpEl.style.display = helpOpen ? 'block' : 'none';
   if (helpOpen){ shopOpen = false; shopEl.style.display = 'none'; }
-  paused = helpOpen || shopOpen;
+  paused = helpOpen || shopOpen || gateOpen;
 }
 function renderShop(){
   let html = '<h2>🛒 ORBITAL BLACK MARKET</h2><div style="color:#8fb8d8;font-size:13px">You have <b style="color:var(--am)">' + Math.floor(dust) + ' 💠</b> cosmic dust</div>';
@@ -971,7 +957,7 @@ function renderShop(){
   UPG.forEach((u, i) => {
     html += '<div class="row"><span><b>' + u.name + '</b> <span style="color:var(--cy)">Lv.' + u.lvl + '</span><small>' + u.desc + '</small></span><button class="buy' + (dust >= upgCost(u) ? '' : ' no') + '" onclick="buyUpg(' + i + ')">' + upgCost(u) + ' 💠</button></div>';
   });
-  html += '<p style="text-align:center;margin-bottom:0"><button class="btn" onclick="closeShop()">CLOSE (U)</button></p>';
+  html += '<p style="text-align:center;margin-bottom:0"><button class="btn" onclick="closeShop()">CLOSE</button></p>';
   shopEl.innerHTML = html;
 }
 function buyGadget(i){
@@ -991,36 +977,14 @@ window.buyGadget = buyGadget; window.buyUpg = buyUpg; window.closeShop = closeSh
 window.toggleShop = toggleShop; window.toggleHelp = toggleHelp; window.toggleMute = toggleMute;
 
 /* ============================== INPUT ============================== */
-addEventListener('keydown', e => {
-  keys[e.code] = true;
-  if (e.code === 'KeyU') toggleShop();
-  else if (e.code === 'KeyH') toggleHelp();
-  else if (e.code === 'KeyM') toggleMute();
-  else if (e.code === 'KeyP'){ if (!shopOpen && !helpOpen) paused = !paused; }
-  else if (e.code === 'Escape'){ if (shopOpen) closeShop(); if (helpOpen) toggleHelp(); }
-  else if (e.code === 'Enter'){ if (planets.length === 0 && !ship.dead) warp(); }
-  else if (e.code.startsWith('Digit')){
-    const n = +e.code.slice(5) - 1;
-    if (n >= 0 && n < GADGETS.length && GADGETS[n].unlocked){ curGadget = n; buildHotbar(); }
-  }
-});
-addEventListener('keyup', e => { keys[e.code] = false; });
-
-// pointer input: mouse aims/fires as before; on touch, the lower-left zone is a
-// virtual joystick and any other touch aims + fires while held
-const isTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
-if (isTouch) document.body.classList.add('touch');
+// touch-first input: every pointer works the same way. The lower-left zone is
+// a virtual joystick; any other press aims and fires while held.
 const joy = { id: null, ox: 0, oy: 0, dx: 0, dy: 0 };
 let aimId = null, touchBoost = false;
 cv.addEventListener('pointerdown', e => {
   e.preventDefault(); ac();
   try { cv.setPointerCapture(e.pointerId); } catch (_) {}
-  if (e.pointerType === 'mouse'){
-    if (e.button === 0) mouseDown = true;
-    mouseX = e.clientX; mouseY = e.clientY;
-    return;
-  }
-  if (joy.id === null && e.clientX < W * 0.42 && e.clientY > H * 0.4){
+  if (joy.id === null && e.clientX < W * 0.45 && e.clientY > H * 0.38){
     joy.id = e.pointerId; joy.ox = e.clientX; joy.oy = e.clientY; joy.dx = joy.dy = 0;
     return;
   }
@@ -1034,17 +998,18 @@ cv.addEventListener('pointermove', e => {
     joy.dx = dx; joy.dy = dy;
     return;
   }
-  if (e.pointerType === 'mouse' || e.pointerId === aimId){ mouseX = e.clientX; mouseY = e.clientY; }
+  if (e.pointerId === aimId){ mouseX = e.clientX; mouseY = e.clientY; }
 });
 function endPointer(e){
   if (e.pointerId === joy.id){ joy.id = null; joy.dx = joy.dy = 0; return; }
-  if (e.pointerType === 'mouse'){ if (e.button === 0) mouseDown = false; return; }
   if (e.pointerId === aimId){ aimId = null; mouseDown = false; }
 }
 cv.addEventListener('pointerup', endPointer);
 cv.addEventListener('pointercancel', endPointer);
-addEventListener('wheel', e => { cam.tzoom = clamp(cam.tzoom * (e.deltaY > 0 ? 0.88 : 1.14), 0.3, 1.7); e.preventDefault(); }, { passive: false });
 cv.addEventListener('contextmenu', e => e.preventDefault());
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && !helpOpen && !shopOpen && !gateOpen) toggleHelp(); // acts as pause with a resume button
+});
 const boostBtn = document.getElementById('boostbtn');
 boostBtn.addEventListener('pointerdown', e => { e.preventDefault(); ac(); touchBoost = true; });
 addEventListener('pointerup', () => { touchBoost = false; });
@@ -1053,11 +1018,25 @@ document.getElementById('zin').addEventListener('click', () => { cam.tzoom = cla
 document.getElementById('zout').addEventListener('click', () => { cam.tzoom = clamp(cam.tzoom * 0.8, 0.3, 1.7); });
 
 /* ============================== MAIN ============================== */
+// desktop gate: this is a phone game — nudge mouse-only visitors to their phone
+let gateOpen = false;
+function closeGate(){
+  gateOpen = false; document.getElementById('deskgate').style.display = 'none';
+  paused = helpOpen || shopOpen;
+  if (!helpOpen) toggleHelp();
+}
+window.closeGate = closeGate;
+
 spawnSystem(1);
 { const a = rand(0, TAU), r = planets[planets.length - 1].orbit + 500;
   ship.x = Math.cos(a) * r; ship.y = Math.sin(a) * r; cam.x = ship.x; cam.y = ship.y; }
 buildHotbar();
-setTimeout(() => { if (!helpOpen && !shopOpen) toggleHelp(); }, 400);
+if (matchMedia('(pointer: fine)').matches && !matchMedia('(pointer: coarse)').matches){
+  gateOpen = true; paused = true;
+  document.getElementById('deskgate').style.display = 'block';
+} else {
+  setTimeout(() => { if (!helpOpen && !shopOpen) toggleHelp(); }, 400);
+}
 
 let last = performance.now();
 function frame(t){
