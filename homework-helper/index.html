@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Homework Helper AI</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --card: #1a1d27;
+    --card2: #222634;
+    --text: #e8eaf0;
+    --muted: #9aa0b0;
+    --accent: #7c5cff;
+    --accent2: #4db6ac;
+    --danger: #e06c75;
+    --border: #2e3345;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 24px 16px 80px; }
+  h1 { font-size: 1.7rem; margin: 8px 0 4px; }
+  h1 span { color: var(--accent); }
+  .sub { color: var(--muted); margin: 0 0 24px; font-size: .95rem; }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  label { font-size: .85rem; color: var(--muted); display: block; margin-bottom: 6px; }
+  input[type="password"], input[type="text"], textarea, select {
+    width: 100%;
+    background: var(--card2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: .95rem;
+    font-family: inherit;
+  }
+  textarea { min-height: 90px; resize: vertical; }
+  input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); border-color: transparent; }
+
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .row > * { flex: 1; }
+
+  .modes { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
+  .mode-btn {
+    flex: 1;
+    min-width: 150px;
+    background: var(--card2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: .9rem;
+    text-align: center;
+  }
+  .mode-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  .mode-desc { color: var(--muted); font-size: .85rem; min-height: 1.4em; margin: 0 0 4px; }
+
+  .problem-card { position: relative; }
+  .problem-card .remove {
+    position: absolute; top: 10px; right: 10px;
+    background: none; border: none; color: var(--muted);
+    font-size: 1.1rem; cursor: pointer; padding: 4px 8px;
+  }
+  .problem-card .remove:hover { color: var(--danger); }
+  .problem-num { font-size: .8rem; color: var(--accent2); font-weight: 700; letter-spacing: .05em; text-transform: uppercase; margin-bottom: 6px; }
+
+  .answer {
+    background: var(--card2);
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-top: 12px;
+    font-size: .95rem;
+    display: none;
+    overflow-x: auto;
+  }
+  .answer.visible { display: block; }
+  .answer .status { color: var(--muted); font-style: italic; }
+  .answer .error { color: var(--danger); }
+  .answer pre {
+    background: #12141c; padding: 10px; border-radius: 6px; overflow-x: auto;
+  }
+  .answer code { background: #12141c; padding: 1px 5px; border-radius: 4px; font-size: .88em; }
+  .answer pre code { background: none; padding: 0; }
+  .answer h1, .answer h2, .answer h3 { font-size: 1.05rem; margin: 14px 0 6px; color: var(--accent2); }
+  .answer ul, .answer ol { padding-left: 22px; margin: 6px 0; }
+  .answer p { margin: 8px 0; }
+
+  .btn {
+    background: var(--accent); color: #fff; border: none;
+    padding: 12px 22px; border-radius: 8px; font-size: 1rem;
+    font-weight: 600; cursor: pointer;
+  }
+  .btn:hover { filter: brightness(1.1); }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .btn.secondary { background: var(--card2); color: var(--text); border: 1px solid var(--border); font-weight: 400; }
+  .actions { display: flex; gap: 10px; margin-top: 8px; flex-wrap: wrap; }
+
+  details.setup summary { cursor: pointer; font-weight: 600; }
+  details.setup[open] summary { margin-bottom: 12px; }
+  .hint-note { font-size: .8rem; color: var(--muted); margin-top: 8px; }
+  .hint-note a { color: var(--accent2); }
+  .key-status { font-size: .8rem; margin-top: 6px; }
+  .key-status.ok { color: var(--accent2); }
+  .key-status.missing { color: var(--danger); }
+
+  .footer-note {
+    text-align: center; color: var(--muted); font-size: .8rem; margin-top: 32px;
+    border-top: 1px solid var(--border); padding-top: 16px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>📚 Homework Helper <span>AI</span></h1>
+  <p class="sub">Paste one problem or a whole batch — get step-by-step explanations, hints, or answer checking. Built to help you <em>learn</em>, not just copy.</p>
+
+  <div class="card">
+    <details class="setup" id="setupBox">
+      <summary>🔑 Setup — Claude API key</summary>
+      <label for="apiKey">Your Anthropic API key (stored only in this browser)</label>
+      <input type="password" id="apiKey" placeholder="sk-ant-...">
+      <div class="hint-note">
+        Get a key at <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>.
+        The key is saved to this browser's localStorage and sent only to Anthropic's API — never anywhere else.
+      </div>
+    </details>
+    <div class="key-status" id="keyStatus"></div>
+  </div>
+
+  <div class="card">
+    <label>How should it help you?</label>
+    <div class="modes" id="modes">
+      <button class="mode-btn active" data-mode="explain">📖 Explain step-by-step</button>
+      <button class="mode-btn" data-mode="hints">💡 Hints only</button>
+      <button class="mode-btn" data-mode="check">✅ Check my answer</button>
+    </div>
+    <p class="mode-desc" id="modeDesc"></p>
+  </div>
+
+  <div id="problems"></div>
+
+  <div class="actions">
+    <button class="btn secondary" id="addBtn">＋ Add another problem</button>
+    <button class="btn" id="solveBtn">Solve all ➜</button>
+  </div>
+
+  <p class="footer-note">
+    Use this to understand your work, not to skip it — check your school's rules on AI help.<br>
+    Powered by the Claude API (claude-opus-4-8).
+  </p>
+</div>
+
+<script>
+"use strict";
+
+const MODEL = "claude-opus-4-8";
+const API_URL = "https://api.anthropic.com/v1/messages";
+
+const MODE_INFO = {
+  explain: {
+    desc: "Works through the problem step by step and explains the reasoning behind each step.",
+    system: "You are a patient, encouraging tutor helping a student learn. Work through the problem step by step. For each step: say what you're doing AND why — the goal is that the student could solve a similar problem on their own afterward. Use simple language. Show all work for math. End with a clearly labeled final answer and a one-line recap of the key concept. Format math as plain text (use / for division, ^ for exponents, no LaTeX)."
+  },
+  hints: {
+    desc: "Gives you progressive hints so you can solve it yourself — never reveals the final answer.",
+    system: "You are a tutor who NEVER gives away the final answer. Give 2-4 progressive hints: hint 1 points at the relevant concept, hint 2 suggests the first step, later hints get more specific — but always stop short of the answer itself. End by encouraging the student to try it and telling them what a correct approach should roughly look like. Format math as plain text (no LaTeX)."
+  },
+  check: {
+    desc: "Paste the problem AND your answer/work — it checks it and explains any mistakes.",
+    system: "You are a tutor checking a student's work. The student provides a problem plus their answer or working. First state clearly whether the answer is correct. If wrong, pinpoint exactly where the mistake happened and explain the misconception — then show the correct approach step by step. If right, confirm it and briefly reinforce why the method works. Be kind but honest. Format math as plain text (no LaTeX)."
+  }
+};
+
+let mode = "explain";
+let running = false;
+
+// ---------- setup / key handling ----------
+const apiKeyInput = document.getElementById("apiKey");
+const keyStatus = document.getElementById("keyStatus");
+const setupBox = document.getElementById("setupBox");
+
+function refreshKeyStatus() {
+  const k = localStorage.getItem("hh_api_key") || "";
+  if (k.trim()) {
+    keyStatus.textContent = "✓ API key saved";
+    keyStatus.className = "key-status ok";
+  } else {
+    keyStatus.textContent = "⚠ No API key yet — open Setup above and paste one to get started.";
+    keyStatus.className = "key-status missing";
+    setupBox.open = true;
+  }
+}
+apiKeyInput.value = localStorage.getItem("hh_api_key") || "";
+apiKeyInput.addEventListener("input", () => {
+  localStorage.setItem("hh_api_key", apiKeyInput.value.trim());
+  refreshKeyStatus();
+});
+refreshKeyStatus();
+
+// ---------- modes ----------
+const modeDesc = document.getElementById("modeDesc");
+document.getElementById("modes").addEventListener("click", (e) => {
+  const btn = e.target.closest(".mode-btn");
+  if (!btn) return;
+  document.querySelectorAll(".mode-btn").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  mode = btn.dataset.mode;
+  modeDesc.textContent = MODE_INFO[mode].desc;
+  updatePlaceholders();
+});
+modeDesc.textContent = MODE_INFO[mode].desc;
+
+// ---------- problem list ----------
+const problemsEl = document.getElementById("problems");
+let problemCount = 0;
+
+function placeholderFor() {
+  return mode === "check"
+    ? "Paste the problem AND your answer/work here…\ne.g.  Solve 2x + 6 = 14.  My answer: x = 5 because…"
+    : "Paste a homework problem here…\ne.g.  A train travels 240 km in 3 hours. What is its average speed?";
+}
+
+function updatePlaceholders() {
+  document.querySelectorAll(".problem-input").forEach(t => t.placeholder = placeholderFor());
+}
+
+function addProblem(focus = true) {
+  problemCount++;
+  const card = document.createElement("div");
+  card.className = "card problem-card";
+  card.innerHTML = `
+    <button class="remove" title="Remove this problem">✕</button>
+    <div class="problem-num">Problem</div>
+    <textarea class="problem-input" placeholder=""></textarea>
+    <div class="answer"></div>
+  `;
+  card.querySelector(".problem-input").placeholder = placeholderFor();
+  card.querySelector(".remove").addEventListener("click", () => {
+    if (problemsEl.children.length > 1) card.remove();
+    else card.querySelector(".problem-input").value = "";
+    renumber();
+  });
+  problemsEl.appendChild(card);
+  renumber();
+  if (focus) card.querySelector(".problem-input").focus();
+}
+
+function renumber() {
+  [...problemsEl.children].forEach((c, i) => {
+    c.querySelector(".problem-num").textContent = "Problem " + (i + 1);
+  });
+}
+
+document.getElementById("addBtn").addEventListener("click", () => addProblem());
+addProblem(false);
+
+// ---------- tiny markdown renderer ----------
+function escapeHtml(s) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+function renderMarkdown(md) {
+  const codeBlocks = [];
+  md = md.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
+    codeBlocks.push(`<pre><code>${escapeHtml(code)}</code></pre>`);
+    return ` CODE${codeBlocks.length - 1} `;
+  });
+  let html = escapeHtml(md);
+  html = html.replace(/`([^`\n]+)`/g, "<code>$1</code>");
+  html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  html = html.replace(/^### (.+)$/gm, "<h3>$1</h3>");
+  html = html.replace(/^## (.+)$/gm, "<h2>$1</h2>");
+  html = html.replace(/^# (.+)$/gm, "<h1>$1</h1>");
+  // lists
+  html = html.replace(/((?:^[-*] .+\n?)+)/gm, m =>
+    "<ul>" + m.trim().split("\n").map(l => "<li>" + l.replace(/^[-*] /, "") + "</li>").join("") + "</ul>");
+  html = html.replace(/((?:^\d+\. .+\n?)+)/gm, m =>
+    "<ol>" + m.trim().split("\n").map(l => "<li>" + l.replace(/^\d+\. /, "") + "</li>").join("") + "</ol>");
+  // paragraphs
+  html = html.split(/\n{2,}/).map(p =>
+    /^<(h\d|ul|ol|pre)/.test(p.trim()) ? p : "<p>" + p.replace(/\n/g, "<br>") + "</p>"
+  ).join("");
+  html = html.replace(/ CODE(\d+) /g, (_, i) => codeBlocks[+i]);
+  return html;
+}
+
+// ---------- solving ----------
+async function solveOne(problemText, answerEl) {
+  answerEl.classList.add("visible");
+  answerEl.innerHTML = '<span class="status">Thinking…</span>';
+
+  const apiKey = (localStorage.getItem("hh_api_key") || "").trim();
+  const body = {
+    model: MODEL,
+    max_tokens: 4096,
+    stream: true,
+    system: MODE_INFO[mode].system,
+    messages: [{ role: "user", content: problemText }]
+  };
+
+  const res = await fetch(API_URL, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true"
+    },
+    body: JSON.stringify(body)
+  });
+
+  if (!res.ok) {
+    let msg = "Request failed (HTTP " + res.status + ")";
+    try {
+      const err = await res.json();
+      if (err.error && err.error.message) msg = err.error.message;
+    } catch (_) { /* keep default message */ }
+    if (res.status === 401) msg = "Invalid API key — open Setup and check your key.";
+    if (res.status === 429) msg = "Rate limited — wait a moment and try again. (" + msg + ")";
+    answerEl.innerHTML = '<span class="error">⚠ ' + escapeHtml(msg) + "</span>";
+    return;
+  }
+
+  // Parse the SSE stream, accumulating text deltas
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let text = "";
+  let lastRender = 0;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop(); // keep incomplete line
+    for (const line of lines) {
+      if (!line.startsWith("data: ")) continue;
+      let ev;
+      try { ev = JSON.parse(line.slice(6)); } catch (_) { continue; }
+      if (ev.type === "content_block_delta" && ev.delta && ev.delta.type === "text_delta") {
+        text += ev.delta.text;
+        const now = Date.now();
+        if (now - lastRender > 120) { // throttle re-renders
+          answerEl.innerHTML = renderMarkdown(text);
+          lastRender = now;
+        }
+      } else if (ev.type === "error" && ev.error) {
+        answerEl.innerHTML = '<span class="error">⚠ ' + escapeHtml(ev.error.message || "Stream error") + "</span>";
+        return;
+      }
+    }
+  }
+  answerEl.innerHTML = text
+    ? renderMarkdown(text)
+    : '<span class="error">⚠ No response received — try again.</span>';
+}
+
+const solveBtn = document.getElementById("solveBtn");
+solveBtn.addEventListener("click", async () => {
+  if (running) return;
+  const apiKey = (localStorage.getItem("hh_api_key") || "").trim();
+  if (!apiKey) {
+    setupBox.open = true;
+    apiKeyInput.focus();
+    refreshKeyStatus();
+    return;
+  }
+  const cards = [...problemsEl.children].filter(
+    c => c.querySelector(".problem-input").value.trim()
+  );
+  if (!cards.length) {
+    problemsEl.querySelector(".problem-input").focus();
+    return;
+  }
+
+  running = true;
+  solveBtn.disabled = true;
+  solveBtn.textContent = "Working…";
+  try {
+    for (const card of cards) {
+      const text = card.querySelector(".problem-input").value.trim();
+      const answerEl = card.querySelector(".answer");
+      try {
+        await solveOne(text, answerEl);
+      } catch (e) {
+        answerEl.classList.add("visible");
+        answerEl.innerHTML = '<span class="error">⚠ ' + escapeHtml(e.message || String(e)) + "</span>";
+      }
+    }
+  } finally {
+    running = false;
+    solveBtn.disabled = false;
+    solveBtn.textContent = "Solve all ➜";
+  }
+});
+</script>
+</body>
+</html>
