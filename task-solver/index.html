@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Homework Helper AI</title>
+<title>Task Solver AI</title>
 <style>
   :root {
     --bg: #0f1117;
@@ -125,8 +125,8 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>📚 Homework Helper <span>AI</span></h1>
-  <p class="sub">Paste one problem or a whole batch — get step-by-step explanations, hints, or answer checking. Built to help you <em>learn</em>, not just copy.</p>
+  <h1>⚡ Task Solver <span>AI</span></h1>
+  <p class="sub">Paste one task or a whole list — writing, planning, summarizing, researching, problem-solving — and it works through them all.</p>
 
   <div class="card">
     <details class="setup" id="setupBox">
@@ -142,11 +142,11 @@
   </div>
 
   <div class="card">
-    <label>How should it help you?</label>
+    <label>How should it handle your tasks?</label>
     <div class="modes" id="modes">
-      <button class="mode-btn active" data-mode="explain">📖 Explain step-by-step</button>
-      <button class="mode-btn" data-mode="hints">💡 Hints only</button>
-      <button class="mode-btn" data-mode="check">✅ Check my answer</button>
+      <button class="mode-btn active" data-mode="complete">⚡ Do the task</button>
+      <button class="mode-btn" data-mode="plan">🗺️ Make a plan</button>
+      <button class="mode-btn" data-mode="improve">✨ Improve my work</button>
     </div>
     <p class="mode-desc" id="modeDesc"></p>
   </div>
@@ -154,12 +154,11 @@
   <div id="problems"></div>
 
   <div class="actions">
-    <button class="btn secondary" id="addBtn">＋ Add another problem</button>
-    <button class="btn" id="solveBtn">Solve all ➜</button>
+    <button class="btn secondary" id="addBtn">＋ Add another task</button>
+    <button class="btn" id="solveBtn">Do them all ➜</button>
   </div>
 
   <p class="footer-note">
-    Use this to understand your work, not to skip it — check your school's rules on AI help.<br>
     Powered by the Claude API (claude-opus-4-8).
   </p>
 </div>
@@ -171,21 +170,21 @@ const MODEL = "claude-opus-4-8";
 const API_URL = "https://api.anthropic.com/v1/messages";
 
 const MODE_INFO = {
-  explain: {
-    desc: "Works through the problem step by step and explains the reasoning behind each step.",
-    system: "You are a patient, encouraging tutor helping a student learn. Work through the problem step by step. For each step: say what you're doing AND why — the goal is that the student could solve a similar problem on their own afterward. Use simple language. Show all work for math. End with a clearly labeled final answer and a one-line recap of the key concept. Format math as plain text (use / for division, ^ for exponents, no LaTeX)."
+  complete: {
+    desc: "Completes the task fully — writes the thing, solves the problem, produces the deliverable.",
+    system: "You are a capable, efficient assistant. The user gives you a task — complete it fully and deliver the finished result. If it's a writing task, write the actual text. If it's a problem, solve it and show the answer. If it's a question, answer it thoroughly. Lead with the deliverable itself, then add brief notes only if genuinely useful. If the task is ambiguous, make a sensible assumption, state it in one line, and proceed — don't stall by asking questions. Format math as plain text (use / for division, ^ for exponents, no LaTeX)."
   },
-  hints: {
-    desc: "Gives you progressive hints so you can solve it yourself — never reveals the final answer.",
-    system: "You are a tutor who NEVER gives away the final answer. Give 2-4 progressive hints: hint 1 points at the relevant concept, hint 2 suggests the first step, later hints get more specific — but always stop short of the answer itself. End by encouraging the student to try it and telling them what a correct approach should roughly look like. Format math as plain text (no LaTeX)."
+  plan: {
+    desc: "Breaks a big task into clear, ordered steps you can follow to get it done.",
+    system: "You are a practical planner. The user gives you a task or goal — break it into a clear, ordered, actionable plan. Number the steps, keep each one concrete (what to do, roughly how long it takes, what you need for it), and flag the 1-2 steps most likely to cause trouble with a quick tip for each. End with a suggested 'do this first' starting point. Keep it tight — no filler."
   },
-  check: {
-    desc: "Paste the problem AND your answer/work — it checks it and explains any mistakes.",
-    system: "You are a tutor checking a student's work. The student provides a problem plus their answer or working. First state clearly whether the answer is correct. If wrong, pinpoint exactly where the mistake happened and explain the misconception — then show the correct approach step by step. If right, confirm it and briefly reinforce why the method works. Be kind but honest. Format math as plain text (no LaTeX)."
+  improve: {
+    desc: "Paste your draft or attempt — it polishes it and explains what it changed.",
+    system: "You are a sharp but constructive editor/reviewer. The user pastes their work (a draft, an answer, code, a plan). First deliver an improved version, then a short bullet list of the key changes you made and why. Preserve the user's voice and intent — improve, don't rewrite into something unrecognizable. Be honest about anything that's wrong or weak. Format math as plain text (no LaTeX)."
   }
 };
 
-let mode = "explain";
+let mode = "complete";
 let running = false;
 
 // ---------- setup / key handling ----------
@@ -229,9 +228,9 @@ const problemsEl = document.getElementById("problems");
 let problemCount = 0;
 
 function placeholderFor() {
-  return mode === "check"
-    ? "Paste the problem AND your answer/work here…\ne.g.  Solve 2x + 6 = 14.  My answer: x = 5 because…"
-    : "Paste a homework problem here…\ne.g.  A train travels 240 km in 3 hours. What is its average speed?";
+  return mode === "improve"
+    ? "Paste your draft or attempt here…\ne.g.  Here's my email to my landlord, make it more professional: …"
+    : "Describe a task here…\ne.g.  Write a 200-word bio for my YouTube channel about Gorilla Tag mods";
 }
 
 function updatePlaceholders() {
@@ -243,8 +242,8 @@ function addProblem(focus = true) {
   const card = document.createElement("div");
   card.className = "card problem-card";
   card.innerHTML = `
-    <button class="remove" title="Remove this problem">✕</button>
-    <div class="problem-num">Problem</div>
+    <button class="remove" title="Remove this task">✕</button>
+    <div class="problem-num">Task</div>
     <textarea class="problem-input" placeholder=""></textarea>
     <div class="answer"></div>
   `;
@@ -261,7 +260,7 @@ function addProblem(focus = true) {
 
 function renumber() {
   [...problemsEl.children].forEach((c, i) => {
-    c.querySelector(".problem-num").textContent = "Problem " + (i + 1);
+    c.querySelector(".problem-num").textContent = "Task " + (i + 1);
   });
 }
 
@@ -404,7 +403,7 @@ solveBtn.addEventListener("click", async () => {
   } finally {
     running = false;
     solveBtn.disabled = false;
-    solveBtn.textContent = "Solve all ➜";
+    solveBtn.textContent = "Do them all ➜";
   }
 });
 </script>
