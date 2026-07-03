@@ -244,6 +244,7 @@ document.getElementById("modes").addEventListener("click", (e) => {
   mode = btn.dataset.mode;
   modeDesc.textContent = MODE_INFO[mode].desc;
   updatePlaceholders();
+  saveState();
 });
 modeDesc.textContent = MODE_INFO[mode].desc;
 
@@ -261,7 +262,7 @@ function updatePlaceholders() {
   document.querySelectorAll(".problem-input").forEach(t => t.placeholder = placeholderFor());
 }
 
-function addProblem(focus = true) {
+function addProblem(focus = true, initialText = "") {
   problemCount++;
   const card = document.createElement("div");
   card.className = "card problem-card";
@@ -276,15 +277,19 @@ function addProblem(focus = true) {
     </div>
     <div class="answer"></div>
     <div class="save-row" style="display:none">
+      <button class="save-btn copy-btn" type="button">📋 Copy result</button>
       <button class="save-btn" type="button">⬇ Save result to my computer</button>
     </div>
   `;
   card._files = [];
-  card.querySelector(".problem-input").placeholder = placeholderFor();
+  const input = card.querySelector(".problem-input");
+  input.placeholder = placeholderFor();
+  input.value = initialText;
   card.querySelector(".remove").addEventListener("click", () => {
     if (problemsEl.children.length > 1) card.remove();
-    else card.querySelector(".problem-input").value = "";
+    else input.value = "";
     renumber();
+    saveState();
   });
   const fileInput = card.querySelector(".file-input");
   card.querySelector(".attach-btn").addEventListener("click", () => fileInput.click());
@@ -303,7 +308,19 @@ function addProblem(focus = true) {
     fileInput.value = "";
     renderChips(card);
   });
-  card.querySelector(".save-btn").addEventListener("click", () => {
+  const copyBtn = card.querySelector(".copy-btn");
+  copyBtn.addEventListener("click", async () => {
+    if (!card._resultText) return;
+    try {
+      await navigator.clipboard.writeText(card._resultText);
+      copyBtn.textContent = "✓ Copied!";
+      setTimeout(() => { copyBtn.textContent = "📋 Copy result"; }, 1500);
+    } catch (_) {
+      copyBtn.textContent = "⚠ Copy blocked";
+      setTimeout(() => { copyBtn.textContent = "📋 Copy result"; }, 1500);
+    }
+  });
+  card.querySelector(".save-row .save-btn:not(.copy-btn)").addEventListener("click", () => {
     const text = card._resultText || "";
     if (!text) return;
     const idx = [...problemsEl.children].indexOf(card) + 1;
@@ -371,8 +388,30 @@ function renumber() {
   });
 }
 
-document.getElementById("addBtn").addEventListener("click", () => addProblem());
-addProblem(false);
+document.getElementById("addBtn").addEventListener("click", () => { addProblem(); saveState(); });
+
+// ---------- autosave: tasks and mode survive closing the browser ----------
+function saveState() {
+  const texts = [...problemsEl.children].map(c => c.querySelector(".problem-input").value);
+  localStorage.setItem("ts_tasks", JSON.stringify(texts));
+  localStorage.setItem("ts_mode", mode);
+}
+problemsEl.addEventListener("input", saveState);
+
+(function restoreState() {
+  const savedMode = localStorage.getItem("ts_mode");
+  if (savedMode && MODE_INFO[savedMode]) {
+    mode = savedMode;
+    document.querySelectorAll(".mode-btn").forEach(b =>
+      b.classList.toggle("active", b.dataset.mode === mode));
+    modeDesc.textContent = MODE_INFO[mode].desc;
+  }
+  let texts = [];
+  try { texts = JSON.parse(localStorage.getItem("ts_tasks") || "[]"); } catch (_) {}
+  texts = Array.isArray(texts) ? texts.filter(t => typeof t === "string") : [];
+  if (texts.length) texts.forEach(t => addProblem(false, t));
+  else addProblem(false);
+})();
 
 // ---------- tiny markdown renderer ----------
 function escapeHtml(s) {

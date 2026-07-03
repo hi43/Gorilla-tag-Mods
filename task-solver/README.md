@@ -12,6 +12,8 @@ and it works through them all.
 - **📎 Attach files from your computer** — PDFs, photos/screenshots, and text/code files are
   sent along with the task so the AI can read the actual assignment material (up to 20 MB each)
 - **⬇ Save results to your computer** — download any finished result as a file
+- **📋 Copy button** — one click to copy a result to your clipboard
+- **Autosave** — your task list and mode are remembered even if you close the browser
 - **Batch mode** — add as many tasks as you want and hit "Do them all" once
 - Streams answers live as they're generated
 - No install, no server — just open the file in a browser
