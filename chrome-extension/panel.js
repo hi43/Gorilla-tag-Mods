@@ -195,7 +195,7 @@ startBtn.addEventListener("click", async () => {
           "anthropic-version": "2023-06-01",
           "anthropic-dangerous-direct-browser-access": "true"
         },
-        body: JSON.stringify({ model: MODEL, max_tokens: 2048, system: SYSTEM, tools: TOOLS, messages })
+        body: JSON.stringify({ model: MODEL, max_tokens: 4000, thinking: { type: "adaptive" }, system: SYSTEM, tools: TOOLS, messages })
       });
 
       if (!res.ok) {
