@@ -119,8 +119,41 @@ function pageAction(kind, index, value) {
   }
 }
 
-async function runInTab(tabId, func, args) {
-  const [res] = await chrome.scripting.executeScript({ target: { tabId }, func, args: args || [] });
+// Snapshot EVERY frame (many assignments live inside an embedded iframe),
+// then merge into one global index list. globalMap[g] = { frameId, li }.
+async function snapshotAllFrames(tabId) {
+  let results;
+  try {
+    results = await chrome.scripting.executeScript({ target: { tabId, allFrames: true }, func: pageSnapshot });
+  } catch (_) {
+    results = await chrome.scripting.executeScript({ target: { tabId }, func: pageSnapshot });
+  }
+  const map = [];
+  const lines = [];
+  const texts = [];
+  let main = null, g = 0;
+  for (const r of results) {
+    if (!r || !r.result) continue;
+    if (r.frameId === 0 || main === null) main = r.result;
+    if (r.result.text) texts.push(r.result.text);
+    for (const el of r.result.elements) {
+      map.push({ frameId: r.frameId || 0, li: el.i });
+      lines.push(`[${g}] <${el.tag}${el.type ? " " + el.type : ""}> ${el.label}`);
+      g++;
+    }
+  }
+  if (!main) return null;
+  return {
+    map,
+    text: `URL: ${main.url}\nTITLE: ${main.title}\n\nPAGE TEXT (truncated):\n` +
+          texts.join("\n---\n").slice(0, 7000) +
+          `\n\nINTERACTIVE ELEMENTS (${map.length}):\n` + lines.join("\n")
+  };
+}
+
+async function actInFrame(tabId, frameId, kind, li, value) {
+  const target = frameId ? { tabId, frameIds: [frameId] } : { tabId };
+  const [res] = await chrome.scripting.executeScript({ target, func: pageAction, args: [kind, li, value] });
   return res ? res.result : null;
 }
 
@@ -141,18 +174,16 @@ const TOOLS = [
 ];
 
 const SYSTEM =
-  "You are an agent operating a single web browser tab on the user's behalf to accomplish a task. " +
-  "Each turn you receive a snapshot: the page URL, visible text, and a numbered list of interactive " +
-  "elements (links, buttons, inputs). Choose ONE tool call to make progress. Work in small, verifiable " +
-  "steps: read the snapshot, act, then read the new snapshot before acting again. Prefer typing into the " +
-  "right field and clicking the right button by its index. When the task is finished, or if you're stuck " +
-  "or it would be unsafe to continue, call done with a short summary. Never guess indices that aren't in " +
-  "the current snapshot. Do not perform payments or irreversible actions unless the task explicitly says to.";
-
-function snapshotText(s) {
-  const els = s.elements.map(e => `[${e.i}] <${e.tag}${e.type ? " " + e.type : ""}> ${e.label}`).join("\n");
-  return `URL: ${s.url}\nTITLE: ${s.title}\n\nPAGE TEXT (truncated):\n${s.text}\n\nINTERACTIVE ELEMENTS:\n${els}`;
-}
+  "You are an agent that OPERATES a web browser tab to actually complete a task — not to describe it. " +
+  "Every turn you MUST call exactly one tool that takes an action in the page (click, type, press_enter, " +
+  "scroll, navigate) — or call done only when the task is truly finished or genuinely impossible. Never " +
+  "reply with a plain explanation instead of acting; do the work directly by clicking and typing. " +
+  "Each turn you get a fresh snapshot: the URL, visible text, and a numbered list of interactive elements. " +
+  "To answer a question on the page, TYPE the answer into the matching input, or CLICK the correct option/" +
+  "radio/checkbox, by its index. Fill fields one by one, then click the submit/next button. If you don't see " +
+  "the element you need, scroll to reveal more, and only give up (done) after scrolling hasn't helped. Never " +
+  "guess an index that isn't in the current snapshot. Do not make payments or other irreversible actions " +
+  "unless the task explicitly asks for it.";
 
 // ---------- the agent loop ----------
 let running = false;
@@ -176,12 +207,14 @@ startBtn.addEventListener("click", async () => {
   log("Goal", goal);
 
   try {
-    let snap = await runInTab(tabId, pageSnapshot);
+    let snap = await snapshotAllFrames(tabId);
     if (!snap) throw new Error("Couldn't read that tab (Chrome blocks internal pages like chrome:// and the Web Store).");
+    if (!snap.map.length) log("Note", "No clickable/typeable elements found — the page may still be loading, or the task content is protected.", true);
 
+    let lastFrameId = 0;
     const messages = [{
       role: "user",
-      content: `TASK: ${goal}\n\nHere is the current tab:\n\n${snapshotText(snap)}`
+      content: `TASK: ${goal}\n\nHere is the current tab:\n\n${snap.text}`
     }];
 
     for (let step = 0; step < maxSteps; step++) {
@@ -195,7 +228,8 @@ startBtn.addEventListener("click", async () => {
           "anthropic-version": "2023-06-01",
           "anthropic-dangerous-direct-browser-access": "true"
         },
-        body: JSON.stringify({ model: MODEL, max_tokens: 4000, thinking: { type: "adaptive" }, system: SYSTEM, tools: TOOLS, messages })
+        // tool_choice "any" forces it to ACT every turn instead of just talking.
+        body: JSON.stringify({ model: MODEL, max_tokens: 2048, system: SYSTEM, tools: TOOLS, tool_choice: { type: "any" }, messages })
       });
 
       if (!res.ok) {
@@ -208,36 +242,39 @@ startBtn.addEventListener("click", async () => {
       const data = await res.json();
       messages.push({ role: "assistant", content: data.content });
 
-      const say = data.content.filter(b => b.type === "text").map(b => b.text).join(" ").trim();
-      if (say) log("Thinking", say);
-
       const toolUse = data.content.find(b => b.type === "tool_use");
-      if (data.stop_reason !== "tool_use" || !toolUse) {
-        log("Done", say || "finished"); break;
-      }
+      if (!toolUse) { log("Done", "no action returned"); break; }
 
       if (toolUse.name === "done") {
         log("✓ Done", toolUse.input.summary || "");
         break;
       }
 
-      // execute the tool in the tab
+      // execute the tool — resolve the global index to its frame + local index
       let result;
       const inp = toolUse.input || {};
-      if (toolUse.name === "click") { log("Click", "element " + inp.index); result = await runInTab(tabId, pageAction, ["click", inp.index, null]); }
-      else if (toolUse.name === "type") { log("Type", '"' + (inp.text || "") + '" → ' + inp.index); result = await runInTab(tabId, pageAction, ["type", inp.index, inp.text]); }
-      else if (toolUse.name === "press_enter") { log("Enter", ""); result = await runInTab(tabId, pageAction, ["enter", 0, null]); }
-      else if (toolUse.name === "scroll") { log("Scroll", inp.direction); result = await runInTab(tabId, pageAction, ["scroll", 0, inp.direction]); }
-      else if (toolUse.name === "navigate") { log("Navigate", inp.url); result = await runInTab(tabId, pageAction, ["navigate", 0, inp.url]); }
+      const resolve = (gi) => (gi != null && snap.map[gi]) ? snap.map[gi] : null;
+
+      if (toolUse.name === "click") {
+        const t = resolve(inp.index);
+        if (!t) { result = { ok: false, msg: "index " + inp.index + " not in snapshot" }; }
+        else { lastFrameId = t.frameId; log("Click", "element " + inp.index); result = await actInFrame(tabId, t.frameId, "click", t.li, null); }
+      } else if (toolUse.name === "type") {
+        const t = resolve(inp.index);
+        if (!t) { result = { ok: false, msg: "index " + inp.index + " not in snapshot" }; }
+        else { lastFrameId = t.frameId; log("Type", '"' + (inp.text || "") + '" → ' + inp.index); result = await actInFrame(tabId, t.frameId, "type", t.li, inp.text); }
+      } else if (toolUse.name === "press_enter") { log("Enter", ""); result = await actInFrame(tabId, lastFrameId, "enter", 0, null); }
+      else if (toolUse.name === "scroll") { log("Scroll", inp.direction); result = await actInFrame(tabId, lastFrameId, "scroll", 0, inp.direction); }
+      else if (toolUse.name === "navigate") { log("Navigate", inp.url); result = await actInFrame(tabId, 0, "navigate", 0, inp.url); }
       else { result = { ok: false, msg: "unknown tool" }; }
 
       if (result && !result.ok) log("⚠", result.msg, true);
 
-      // let the page settle, then re-snapshot
+      // let the page settle, then re-snapshot every frame
       await new Promise(r => setTimeout(r, 900));
-      snap = await runInTab(tabId, pageSnapshot);
-      const outcome = (result && result.msg ? result.msg : "done") +
-        (snap ? "\n\nNew tab state:\n\n" + snapshotText(snap) : "\n\n(could not re-read the tab)");
+      snap = await snapshotAllFrames(tabId);
+      if (!snap) snap = { map: [], text: "(could not re-read the tab — it may have navigated away)" };
+      const outcome = (result && result.msg ? result.msg : "done") + "\n\nNew tab state:\n\n" + snap.text;
 
       messages.push({
         role: "user",
