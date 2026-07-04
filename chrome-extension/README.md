@@ -27,6 +27,16 @@ this has to be a Chrome **extension**. It only ever touches the tab you point it
 6. Click **▶ Give it the tab** and watch each step appear in the log
 7. Hit **◼ Stop** any time to halt it
 
+## If it just describes the task instead of doing it
+
+Update to v1.1+ (this folder). Two fixes make it actually act:
+- It's now **forced to take an action every step** (click/type), not just explain.
+- It now reads **embedded frames** too, so assignments inside an iframe (Google Forms,
+  Canvas quizzes, etc.) are visible to it.
+
+After replacing the files, go to `chrome://extensions` and click the **↻ reload** icon on
+the extension so the new version loads.
+
 ## How it works
 
 Each step, the extension reads the tab (its text + a numbered list of the links, buttons, and
