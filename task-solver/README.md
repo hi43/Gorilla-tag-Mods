@@ -32,6 +32,20 @@ and it works through them all.
 
 That's it. Paste a task and hit **Do them all**.
 
+## 📱 Using it on your phone
+
+Phones can't easily open a downloaded `.html` file, so put the app online with GitHub Pages
+(free, ~1 minute):
+
+1. Merge this into `main` (there's already a copy of the app at `docs/index.html`)
+2. On GitHub: **Settings → Pages → Source: Deploy from a branch → Branch: `main`, folder: `/docs` → Save**
+3. After a minute your app is live at `https://hi43.github.io/Gorilla-tag-Mods/` —
+   open that on your phone and even add it to your home screen like a real app
+
+On mobile you also get a **📷 Take a photo** button — snap a picture of a worksheet
+and it becomes the attachment. There's a **◼ Stop** button too (the solve button turns
+into it while working).
+
 ## Notes
 
 - Your API key is stored in your browser's localStorage on your own computer. Don't share
