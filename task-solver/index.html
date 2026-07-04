@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Task Solver AI</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --card: #1a1d27;
+    --card2: #222634;
+    --text: #e8eaf0;
+    --muted: #9aa0b0;
+    --accent: #7c5cff;
+    --accent2: #4db6ac;
+    --danger: #e06c75;
+    --border: #2e3345;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 24px 16px 80px; }
+  h1 { font-size: 1.7rem; margin: 8px 0 4px; }
+  h1 span { color: var(--accent); }
+  .sub { color: var(--muted); margin: 0 0 24px; font-size: .95rem; }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  label { font-size: .85rem; color: var(--muted); display: block; margin-bottom: 6px; }
+  input[type="password"], input[type="text"], textarea, select {
+    width: 100%;
+    background: var(--card2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 16px; /* 16px+ stops iPhones auto-zooming when you tap a box */
+    font-family: inherit;
+  }
+  textarea { min-height: 90px; resize: vertical; }
+  input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); border-color: transparent; }
+
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .row > * { flex: 1; }
+
+  .modes { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
+  .mode-btn {
+    flex: 1;
+    min-width: 150px;
+    background: var(--card2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: .9rem;
+    text-align: center;
+  }
+  .mode-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  .mode-desc { color: var(--muted); font-size: .85rem; min-height: 1.4em; margin: 0 0 4px; }
+
+  .problem-card { position: relative; }
+  .problem-card .remove {
+    position: absolute; top: 10px; right: 10px;
+    background: none; border: none; color: var(--muted);
+    font-size: 1.1rem; cursor: pointer; padding: 4px 8px;
+  }
+  .problem-card .remove:hover { color: var(--danger); }
+  .problem-num { font-size: .8rem; color: var(--accent2); font-weight: 700; letter-spacing: .05em; text-transform: uppercase; margin-bottom: 6px; }
+
+  .attach-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+  .attach-btn {
+    background: var(--card2); color: var(--muted); border: 1px dashed var(--border);
+    border-radius: 8px; padding: 6px 12px; font-size: .85rem; cursor: pointer;
+  }
+  .attach-btn:hover { border-color: var(--accent); color: var(--text); }
+  .attach-chip {
+    display: inline-flex; align-items: center; background: var(--card2);
+    border: 1px solid var(--border); border-radius: 999px;
+    padding: 2px 10px; font-size: .78rem; color: var(--text);
+  }
+  .attach-chip button {
+    background: none; border: none; color: var(--muted);
+    cursor: pointer; padding: 0 0 0 6px; font-size: .85rem;
+  }
+  .attach-chip button:hover { color: var(--danger); }
+
+  .save-row { margin-top: 8px; text-align: right; }
+  .save-btn {
+    background: none; border: 1px solid var(--border); color: var(--accent2);
+    border-radius: 8px; padding: 5px 12px; font-size: .8rem; cursor: pointer;
+  }
+  .save-btn:hover { border-color: var(--accent2); }
+
+  .answer {
+    background: var(--card2);
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-top: 12px;
+    font-size: .95rem;
+    display: none;
+    overflow-x: auto;
+  }
+  .answer.visible { display: block; }
+  .answer .status { color: var(--muted); font-style: italic; }
+  .answer .error { color: var(--danger); }
+  .answer pre {
+    background: #12141c; padding: 10px; border-radius: 6px; overflow-x: auto;
+  }
+  .answer code { background: #12141c; padding: 1px 5px; border-radius: 4px; font-size: .88em; }
+  .answer pre code { background: none; padding: 0; }
+  .answer h1, .answer h2, .answer h3 { font-size: 1.05rem; margin: 14px 0 6px; color: var(--accent2); }
+  .answer ul, .answer ol { padding-left: 22px; margin: 6px 0; }
+  .answer p { margin: 8px 0; }
+
+  .btn {
+    background: var(--accent); color: #fff; border: none;
+    padding: 12px 22px; border-radius: 8px; font-size: 1rem;
+    font-weight: 600; cursor: pointer;
+  }
+  .btn:hover { filter: brightness(1.1); }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .btn.secondary { background: var(--card2); color: var(--text); border: 1px solid var(--border); font-weight: 400; }
+  .actions { display: flex; gap: 10px; margin-top: 8px; flex-wrap: wrap; }
+
+  details.setup summary { cursor: pointer; font-weight: 600; }
+  details.setup[open] summary { margin-bottom: 12px; }
+  .hint-note { font-size: .8rem; color: var(--muted); margin-top: 8px; }
+  .hint-note a { color: var(--accent2); }
+  .key-status { font-size: .8rem; margin-top: 6px; }
+  .key-status.ok { color: var(--accent2); }
+  .key-status.missing { color: var(--danger); }
+
+  .footer-note {
+    text-align: center; color: var(--muted); font-size: .8rem; margin-top: 32px;
+    border-top: 1px solid var(--border); padding-top: 16px;
+  }
+
+  /* ---------- mobile ---------- */
+  @media (max-width: 620px) {
+    .wrap { padding: 14px 10px 90px; }
+    h1 { font-size: 1.35rem; }
+    .card { padding: 12px; }
+    .mode-btn { min-width: 100%; }
+    .actions {
+      position: sticky; bottom: 0; z-index: 10;
+      background: var(--bg); padding: 10px 0;
+      border-top: 1px solid var(--border);
+    }
+    .actions .btn { flex: 1; padding: 14px 10px; font-size: .95rem; }
+    .attach-btn, .save-btn { padding: 10px 14px; } /* bigger touch targets */
+    .problem-card .remove { padding: 10px 12px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>⚡ Task Solver <span>AI</span></h1>
+  <p class="sub">Paste one task or a whole list — writing, planning, summarizing, researching, problem-solving — and it works through them all. Attach files from your computer (PDFs, photos, documents) and save the results back when it's done.</p>
+
+  <div class="card">
+    <details class="setup" id="setupBox">
+      <summary>🔑 Setup — Claude API key</summary>
+      <label for="apiKey">Your Anthropic API key (stored only in this browser)</label>
+      <input type="password" id="apiKey" placeholder="sk-ant-...">
+      <div class="hint-note">
+        Get a key at <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>.
+        The key is saved to this browser's localStorage and sent only to Anthropic's API — never anywhere else.
+      </div>
+    </details>
+    <div class="key-status" id="keyStatus"></div>
+  </div>
+
+  <div class="card">
+    <label>How should it handle your tasks?</label>
+    <div class="modes" id="modes">
+      <button class="mode-btn active" data-mode="complete">⚡ Do the task</button>
+      <button class="mode-btn" data-mode="plan">🗺️ Make a plan</button>
+      <button class="mode-btn" data-mode="improve">✨ Improve my work</button>
+    </div>
+    <p class="mode-desc" id="modeDesc"></p>
+  </div>
+
+  <div id="problems"></div>
+
+  <div class="actions">
+    <button class="btn secondary" id="addBtn">＋ Add another task</button>
+    <button class="btn" id="solveBtn">Do them all ➜</button>
+  </div>
+
+  <p class="footer-note">
+    Powered by the Claude API (claude-opus-4-8).
+  </p>
+</div>
+
+<script>
+"use strict";
+
+const MODEL = "claude-opus-4-8";
+const API_URL = "https://api.anthropic.com/v1/messages";
+
+const MODE_INFO = {
+  complete: {
+    desc: "Completes the task fully — writes the thing, solves the problem, produces the deliverable.",
+    system: "You are a capable, efficient assistant. The user gives you a task — complete it fully and deliver the finished result. If it's a writing task, write the actual text. If it's a problem, solve it and show the answer. If it's a question, answer it thoroughly. Lead with the deliverable itself, then add brief notes only if genuinely useful. If the task is ambiguous, make a sensible assumption, state it in one line, and proceed — don't stall by asking questions. Format math as plain text (use / for division, ^ for exponents, no LaTeX)."
+  },
+  plan: {
+    desc: "Breaks a big task into clear, ordered steps you can follow to get it done.",
+    system: "You are a practical planner. The user gives you a task or goal — break it into a clear, ordered, actionable plan. Number the steps, keep each one concrete (what to do, roughly how long it takes, what you need for it), and flag the 1-2 steps most likely to cause trouble with a quick tip for each. End with a suggested 'do this first' starting point. Keep it tight — no filler."
+  },
+  improve: {
+    desc: "Paste your draft or attempt — it polishes it and explains what it changed.",
+    system: "You are a sharp but constructive editor/reviewer. The user pastes their work (a draft, an answer, code, a plan). First deliver an improved version, then a short bullet list of the key changes you made and why. Preserve the user's voice and intent — improve, don't rewrite into something unrecognizable. Be honest about anything that's wrong or weak. Format math as plain text (no LaTeX)."
+  }
+};
+
+let mode = "complete";
+let running = false;
+
+// ---------- setup / key handling ----------
+const apiKeyInput = document.getElementById("apiKey");
+const keyStatus = document.getElementById("keyStatus");
+const setupBox = document.getElementById("setupBox");
+
+function refreshKeyStatus() {
+  const k = localStorage.getItem("hh_api_key") || "";
+  if (k.trim()) {
+    keyStatus.textContent = "✓ API key saved";
+    keyStatus.className = "key-status ok";
+  } else {
+    keyStatus.textContent = "⚠ No API key yet — open Setup above and paste one to get started.";
+    keyStatus.className = "key-status missing";
+    setupBox.open = true;
+  }
+}
+apiKeyInput.value = localStorage.getItem("hh_api_key") || "";
+apiKeyInput.addEventListener("input", () => {
+  localStorage.setItem("hh_api_key", apiKeyInput.value.trim());
+  refreshKeyStatus();
+});
+refreshKeyStatus();
+
+// ---------- modes ----------
+const modeDesc = document.getElementById("modeDesc");
+document.getElementById("modes").addEventListener("click", (e) => {
+  const btn = e.target.closest(".mode-btn");
+  if (!btn) return;
+  document.querySelectorAll(".mode-btn").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  mode = btn.dataset.mode;
+  modeDesc.textContent = MODE_INFO[mode].desc;
+  updatePlaceholders();
+  saveState();
+});
+modeDesc.textContent = MODE_INFO[mode].desc;
+
+// ---------- problem list ----------
+const problemsEl = document.getElementById("problems");
+let problemCount = 0;
+
+function placeholderFor() {
+  return mode === "improve"
+    ? "Paste your draft or attempt here…\ne.g.  Here's my email to my landlord, make it more professional: …"
+    : "Describe a task here…\ne.g.  Write a 200-word bio for my YouTube channel about Gorilla Tag mods";
+}
+
+function updatePlaceholders() {
+  document.querySelectorAll(".problem-input").forEach(t => t.placeholder = placeholderFor());
+}
+
+function addProblem(focus = true, initialText = "") {
+  problemCount++;
+  const card = document.createElement("div");
+  card.className = "card problem-card";
+  card.innerHTML = `
+    <button class="remove" title="Remove this task">✕</button>
+    <div class="problem-num">Task</div>
+    <textarea class="problem-input" placeholder=""></textarea>
+    <div class="attach-row">
+      <button class="attach-btn" type="button">📎 Attach files</button>
+      <button class="attach-btn camera-btn" type="button">📷 Take a photo</button>
+      <input type="file" class="file-input" multiple hidden
+        accept="image/png,image/jpeg,image/gif,image/webp,application/pdf,.txt,.md,.csv,.json,.js,.py,.html,.css,.java,.c,.cpp,.cs,.log">
+      <input type="file" class="camera-input" accept="image/*" capture="environment" hidden>
+    </div>
+    <div class="answer"></div>
+    <div class="save-row" style="display:none">
+      <button class="save-btn copy-btn" type="button">📋 Copy result</button>
+      <button class="save-btn" type="button">⬇ Save result to my computer</button>
+    </div>
+  `;
+  card._files = [];
+  const input = card.querySelector(".problem-input");
+  input.placeholder = placeholderFor();
+  input.value = initialText;
+  card.querySelector(".remove").addEventListener("click", () => {
+    if (problemsEl.children.length > 1) card.remove();
+    else input.value = "";
+    renumber();
+    saveState();
+  });
+  async function ingestFiles(inputEl) {
+    for (const f of [...inputEl.files]) {
+      if (f.size > 20 * 1024 * 1024) {
+        alert(`"${f.name}" is over 20 MB — too big to send. Skipping it.`);
+        continue;
+      }
+      try {
+        card._files.push(await readAttachment(f));
+      } catch (e) {
+        alert(`Couldn't read "${f.name}": ` + (e.message || e));
+      }
+    }
+    inputEl.value = "";
+    renderChips(card);
+  }
+  const fileInput = card.querySelector(".file-input");
+  const cameraInput = card.querySelector(".camera-input");
+  card.querySelector(".attach-btn:not(.camera-btn)").addEventListener("click", () => fileInput.click());
+  card.querySelector(".camera-btn").addEventListener("click", () => cameraInput.click());
+  fileInput.addEventListener("change", () => ingestFiles(fileInput));
+  cameraInput.addEventListener("change", () => ingestFiles(cameraInput));
+  const copyBtn = card.querySelector(".copy-btn");
+  copyBtn.addEventListener("click", async () => {
+    if (!card._resultText) return;
+    try {
+      await navigator.clipboard.writeText(card._resultText);
+      copyBtn.textContent = "✓ Copied!";
+      setTimeout(() => { copyBtn.textContent = "📋 Copy result"; }, 1500);
+    } catch (_) {
+      copyBtn.textContent = "⚠ Copy blocked";
+      setTimeout(() => { copyBtn.textContent = "📋 Copy result"; }, 1500);
+    }
+  });
+  card.querySelector(".save-row .save-btn:not(.copy-btn)").addEventListener("click", () => {
+    const text = card._resultText || "";
+    if (!text) return;
+    const idx = [...problemsEl.children].indexOf(card) + 1;
+    const blob = new Blob([text], { type: "text/markdown" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "task-" + idx + "-result.md";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+  problemsEl.appendChild(card);
+  renumber();
+  if (focus) card.querySelector(".problem-input").focus();
+}
+
+const IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"];
+
+function readAttachment(file) {
+  return new Promise((resolve, reject) => {
+    const isImage = IMAGE_TYPES.includes(file.type);
+    const isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name);
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("read failed"));
+    if (isImage || isPdf) {
+      reader.onload = () => resolve({
+        name: file.name,
+        kind: isImage ? "image" : "pdf",
+        mediaType: isImage ? file.type : "application/pdf",
+        base64: String(reader.result).split(",")[1]
+      });
+      reader.readAsDataURL(file);
+    } else {
+      reader.onload = () => resolve({
+        name: file.name,
+        kind: "text",
+        text: String(reader.result)
+      });
+      reader.readAsText(file);
+    }
+  });
+}
+
+function renderChips(card) {
+  const row = card.querySelector(".attach-row");
+  row.querySelectorAll(".attach-chip").forEach(c => c.remove());
+  card._files.forEach((f, i) => {
+    const chip = document.createElement("span");
+    chip.className = "attach-chip";
+    chip.textContent = (f.kind === "image" ? "🖼 " : f.kind === "pdf" ? "📄 " : "📝 ") + f.name;
+    const x = document.createElement("button");
+    x.textContent = "✕";
+    x.title = "Remove attachment";
+    x.addEventListener("click", () => {
+      card._files.splice(i, 1);
+      renderChips(card);
+    });
+    chip.appendChild(x);
+    row.appendChild(chip);
+  });
+}
+
+function renumber() {
+  [...problemsEl.children].forEach((c, i) => {
+    c.querySelector(".problem-num").textContent = "Task " + (i + 1);
+  });
+}
+
+document.getElementById("addBtn").addEventListener("click", () => { addProblem(); saveState(); });
+
+// ---------- autosave: tasks and mode survive closing the browser ----------
+function saveState() {
+  const texts = [...problemsEl.children].map(c => c.querySelector(".problem-input").value);
+  localStorage.setItem("ts_tasks", JSON.stringify(texts));
+  localStorage.setItem("ts_mode", mode);
+}
+problemsEl.addEventListener("input", saveState);
+
+(function restoreState() {
+  const savedMode = localStorage.getItem("ts_mode");
+  if (savedMode && MODE_INFO[savedMode]) {
+    mode = savedMode;
+    document.querySelectorAll(".mode-btn").forEach(b =>
+      b.classList.toggle("active", b.dataset.mode === mode));
+    modeDesc.textContent = MODE_INFO[mode].desc;
+  }
+  let texts = [];
+  try { texts = JSON.parse(localStorage.getItem("ts_tasks") || "[]"); } catch (_) {}
+  texts = Array.isArray(texts) ? texts.filter(t => typeof t === "string") : [];
+  if (texts.length) texts.forEach(t => addProblem(false, t));
+  else addProblem(false);
+})();
+
+// ---------- tiny markdown renderer ----------
+function escapeHtml(s) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+function renderMarkdown(md) {
+  const codeBlocks = [];
+  md = md.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
+    codeBlocks.push(`<pre><code>${escapeHtml(code)}</code></pre>`);
+    return ` CODE${codeBlocks.length - 1} `;
+  });
+  let html = escapeHtml(md);
+  html = html.replace(/`([^`\n]+)`/g, "<code>$1</code>");
+  html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  html = html.replace(/^### (.+)$/gm, "<h3>$1</h3>");
+  html = html.replace(/^## (.+)$/gm, "<h2>$1</h2>");
+  html = html.replace(/^# (.+)$/gm, "<h1>$1</h1>");
+  // lists
+  html = html.replace(/((?:^[-*] .+\n?)+)/gm, m =>
+    "<ul>" + m.trim().split("\n").map(l => "<li>" + l.replace(/^[-*] /, "") + "</li>").join("") + "</ul>");
+  html = html.replace(/((?:^\d+\. .+\n?)+)/gm, m =>
+    "<ol>" + m.trim().split("\n").map(l => "<li>" + l.replace(/^\d+\. /, "") + "</li>").join("") + "</ol>");
+  // paragraphs
+  html = html.split(/\n{2,}/).map(p =>
+    /^<(h\d|ul|ol|pre)/.test(p.trim()) ? p : "<p>" + p.replace(/\n/g, "<br>") + "</p>"
+  ).join("");
+  html = html.replace(/ CODE(\d+) /g, (_, i) => codeBlocks[+i]);
+  return html;
+}
+
+// ---------- solving ----------
+function buildContent(problemText, files) {
+  if (!files || !files.length) return problemText;
+  const content = [];
+  for (const f of files) {
+    if (f.kind === "image") {
+      content.push({
+        type: "image",
+        source: { type: "base64", media_type: f.mediaType, data: f.base64 }
+      });
+    } else if (f.kind === "pdf") {
+      content.push({
+        type: "document",
+        source: { type: "base64", media_type: "application/pdf", data: f.base64 },
+        title: f.name
+      });
+    } else {
+      content.push({
+        type: "text",
+        text: "Attached file \"" + f.name + "\":\n```\n" + f.text + "\n```"
+      });
+    }
+  }
+  content.push({ type: "text", text: problemText });
+  return content;
+}
+
+async function solveOne(problemText, files, answerEl, signal) {
+  answerEl.classList.add("visible");
+  answerEl.innerHTML = '<span class="status">Thinking…</span>';
+
+  const apiKey = (localStorage.getItem("hh_api_key") || "").trim();
+  const body = {
+    model: MODEL,
+    max_tokens: 4096,
+    stream: true,
+    system: MODE_INFO[mode].system,
+    messages: [{ role: "user", content: buildContent(problemText, files) }]
+  };
+
+  const res = await fetch(API_URL, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true"
+    },
+    body: JSON.stringify(body),
+    signal
+  });
+
+  if (!res.ok) {
+    let msg = "Request failed (HTTP " + res.status + ")";
+    try {
+      const err = await res.json();
+      if (err.error && err.error.message) msg = err.error.message;
+    } catch (_) { /* keep default message */ }
+    if (res.status === 401) msg = "Invalid API key — open Setup and check your key.";
+    if (res.status === 429) msg = "Rate limited — wait a moment and try again. (" + msg + ")";
+    answerEl.innerHTML = '<span class="error">⚠ ' + escapeHtml(msg) + "</span>";
+    return "";
+  }
+
+  // Parse the SSE stream, accumulating text deltas
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let text = "";
+  let lastRender = 0;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop(); // keep incomplete line
+    for (const line of lines) {
+      if (!line.startsWith("data: ")) continue;
+      let ev;
+      try { ev = JSON.parse(line.slice(6)); } catch (_) { continue; }
+      if (ev.type === "content_block_delta" && ev.delta && ev.delta.type === "text_delta") {
+        text += ev.delta.text;
+        const now = Date.now();
+        if (now - lastRender > 120) { // throttle re-renders
+          answerEl.innerHTML = renderMarkdown(text);
+          lastRender = now;
+        }
+      } else if (ev.type === "error" && ev.error) {
+        answerEl.innerHTML = '<span class="error">⚠ ' + escapeHtml(ev.error.message || "Stream error") + "</span>";
+        return "";
+      }
+    }
+  }
+  answerEl.innerHTML = text
+    ? renderMarkdown(text)
+    : '<span class="error">⚠ No response received — try again.</span>';
+  return text;
+}
+
+const solveBtn = document.getElementById("solveBtn");
+let aborter = null;
+
+solveBtn.addEventListener("click", async () => {
+  if (running) {
+    // Button doubles as a Stop button while working
+    if (aborter) aborter.abort();
+    return;
+  }
+  const apiKey = (localStorage.getItem("hh_api_key") || "").trim();
+  if (!apiKey) {
+    setupBox.open = true;
+    apiKeyInput.focus();
+    refreshKeyStatus();
+    return;
+  }
+  const cards = [...problemsEl.children].filter(
+    c => c.querySelector(".problem-input").value.trim()
+  );
+  if (!cards.length) {
+    problemsEl.querySelector(".problem-input").focus();
+    return;
+  }
+
+  running = true;
+  aborter = new AbortController();
+  solveBtn.textContent = "◼ Stop";
+  try {
+    for (const card of cards) {
+      const text = card.querySelector(".problem-input").value.trim();
+      const answerEl = card.querySelector(".answer");
+      const saveRow = card.querySelector(".save-row");
+      try {
+        const result = await solveOne(text, card._files, answerEl, aborter.signal);
+        card._resultText = result;
+        saveRow.style.display = result ? "" : "none";
+      } catch (e) {
+        answerEl.classList.add("visible");
+        saveRow.style.display = "none";
+        if (e.name === "AbortError") {
+          answerEl.innerHTML = '<span class="status">⏹ Stopped.</span>';
+          break; // stop the whole batch
+        }
+        answerEl.innerHTML = '<span class="error">⚠ ' + escapeHtml(e.message || String(e)) + "</span>";
+      }
+    }
+  } finally {
+    running = false;
+    aborter = null;
+    solveBtn.textContent = "Do them all ➜";
+  }
+});
+</script>
+</body>
+</html>
