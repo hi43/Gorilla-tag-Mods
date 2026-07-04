@@ -189,6 +189,18 @@
       <button class="mode-btn" data-mode="improve">✨ Improve my work</button>
     </div>
     <p class="mode-desc" id="modeDesc"></p>
+
+    <label for="readingLevel" style="margin-top:12px">Write it for this audience / reading level</label>
+    <select id="readingLevel">
+      <option value="default">Default — no specific level</option>
+      <option value="6-8">Young child (age 6–8) — very simple words, short sentences</option>
+      <option value="9-11">Kid (age 9–11) — simple, clear, friendly</option>
+      <option value="12-14">Middle school (age 12–14) — plain language</option>
+      <option value="15-18">High school (age 15–18) — fuller vocabulary</option>
+      <option value="adult">Adult / general reader</option>
+      <option value="expert">Professional / expert</option>
+    </select>
+    <p class="hint-note">Controls how simple or advanced the writing is — handy for writing to a younger reader, someone learning English, or explaining things simply. It's just a writing style; it doesn't disguise anything.</p>
   </div>
 
   <div class="card">
@@ -234,6 +246,20 @@ const MODE_INFO = {
     system: "You are a sharp but constructive editor/reviewer. The user pastes their work (a draft, an answer, code, a plan). First deliver an improved version, then a short bullet list of the key changes you made and why. Preserve the user's voice and intent — improve, don't rewrite into something unrecognizable. Be honest about anything that's wrong or weak. Format math as plain text (no LaTeX)."
   }
 };
+
+const LEVEL_INFO = {
+  "default": "",
+  "6-8": " Write for a young child aged 6 to 8: use very simple, common words, short sentences, and a warm, friendly tone. Avoid jargon; explain any tricky idea in plain terms.",
+  "9-11": " Write for a child aged 9 to 11: use simple, clear language and fairly short sentences. Keep it friendly and easy to follow.",
+  "12-14": " Write for a middle-school reader (age 12 to 14): use plain, everyday language and a clear structure. Define any specialized terms.",
+  "15-18": " Write for a high-school reader (age 15 to 18): you can use a fuller vocabulary and more developed sentences, but stay clear and readable.",
+  "adult": " Write for a general adult reader: clear, natural, everyday language.",
+  "expert": " Write for a professional/expert audience: precise terminology and a concise, sophisticated style are fine."
+};
+function levelInstruction() {
+  const lvl = (document.getElementById("readingLevel") || {}).value || "default";
+  return LEVEL_INFO[lvl] || "";
+}
 
 let mode = "complete";
 let running = false;
@@ -428,8 +454,10 @@ function saveState() {
   const texts = [...problemsEl.children].map(c => c.querySelector(".problem-input").value);
   localStorage.setItem("ts_tasks", JSON.stringify(texts));
   localStorage.setItem("ts_mode", mode);
+  localStorage.setItem("ts_level", document.getElementById("readingLevel").value);
 }
 problemsEl.addEventListener("input", saveState);
+document.getElementById("readingLevel").addEventListener("change", saveState);
 
 (function restoreState() {
   const savedMode = localStorage.getItem("ts_mode");
@@ -438,6 +466,11 @@ problemsEl.addEventListener("input", saveState);
     document.querySelectorAll(".mode-btn").forEach(b =>
       b.classList.toggle("active", b.dataset.mode === mode));
     modeDesc.textContent = MODE_INFO[mode].desc;
+  }
+  const savedLevel = localStorage.getItem("ts_level");
+  if (savedLevel) {
+    const sel = document.getElementById("readingLevel");
+    if ([...sel.options].some(o => o.value === savedLevel)) sel.value = savedLevel;
   }
   let texts = [];
   try { texts = JSON.parse(localStorage.getItem("ts_tasks") || "[]"); } catch (_) {}
@@ -511,7 +544,7 @@ async function solveOne(problemText, files, answerEl, signal) {
     model: MODEL,
     max_tokens: 4096,
     stream: true,
-    system: MODE_INFO[mode].system,
+    system: MODE_INFO[mode].system + levelInstruction(),
     messages: [{ role: "user", content: buildContent(problemText, files) }]
   };
 
