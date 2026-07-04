@@ -191,6 +191,17 @@
     <p class="mode-desc" id="modeDesc"></p>
   </div>
 
+  <div class="card">
+    <label>Or hand it a whole folder</label>
+    <button class="btn" id="useComputerBtn" style="background: var(--accent2)">🖥️ Use my computer</button>
+    <div class="hint-note">
+      Pick a folder on your computer — it reads every assignment file inside (text, PDFs, photos),
+      does the work, and saves the finished results into a <b>done</b> folder it creates right there.
+      Works in Chrome/Edge on a computer; on phones use 📎/📷 on a task instead.
+    </div>
+    <div id="computerStatus"></div>
+  </div>
+
   <div id="problems"></div>
 
   <div class="actions">
@@ -563,6 +574,125 @@ async function solveOne(problemText, files, answerEl, signal) {
     : '<span class="error">⚠ No response received — try again.</span>';
   return text;
 }
+
+// ---------- use my computer: work every file in a folder the user picks ----------
+const useComputerBtn = document.getElementById("useComputerBtn");
+const computerStatus = document.getElementById("computerStatus");
+const IMG_EXTS = [".png", ".jpg", ".jpeg", ".gif", ".webp"];
+const TEXT_EXTS = [".txt", ".md", ".csv", ".json", ".js", ".py", ".html", ".css",
+                   ".java", ".c", ".cpp", ".cs", ".log"];
+
+function extOf(name) {
+  const i = name.lastIndexOf(".");
+  return i < 0 ? "" : name.slice(i).toLowerCase();
+}
+
+function folderCard(name) {
+  const d = document.createElement("div");
+  d.className = "card problem-card";
+  d.innerHTML = '<div class="problem-num"></div><div class="answer visible"><span class="status">Waiting…</span></div>';
+  d.querySelector(".problem-num").textContent = name;
+  computerStatus.appendChild(d);
+  return d.querySelector(".answer");
+}
+
+useComputerBtn.addEventListener("click", async () => {
+  if (running) return;
+  if (!window.showDirectoryPicker) {
+    alert("Folder access needs Chrome or Edge on a computer — this browser doesn't allow it. On phones, use 📎 Attach files or 📷 Take a photo on a task instead.");
+    return;
+  }
+  const apiKey = (localStorage.getItem("hh_api_key") || "").trim();
+  if (!apiKey) {
+    setupBox.open = true;
+    apiKeyInput.focus();
+    refreshKeyStatus();
+    return;
+  }
+
+  let dir;
+  try {
+    dir = await window.showDirectoryPicker({ mode: "readwrite" });
+  } catch (_) {
+    return; // user cancelled the folder picker
+  }
+
+  computerStatus.innerHTML = "";
+  const entries = [];
+  for await (const [name, handle] of dir.entries()) {
+    if (handle.kind === "file") entries.push([name, handle]);
+  }
+  entries.sort((a, b) => a[0].localeCompare(b[0]));
+
+  const jobs = [], skipped = [];
+  for (const [name, handle] of entries) {
+    const e = extOf(name);
+    if (name.endsWith("-result.md") || !(e === ".pdf" || IMG_EXTS.includes(e) || TEXT_EXTS.includes(e))) {
+      skipped.push(name);
+      continue;
+    }
+    const file = await handle.getFile();
+    if (file.size > 20 * 1024 * 1024) { skipped.push(name + " (over 20 MB)"); continue; }
+    jobs.push({ name, file });
+  }
+
+  if (!jobs.length) {
+    computerStatus.innerHTML = '<p class="hint-note">No workable files found in that folder (it handles text files, PDFs, and photos).</p>';
+    return;
+  }
+  if (skipped.length) {
+    computerStatus.innerHTML = '<p class="hint-note">Skipping: ' + escapeHtml(skipped.join(", ")) + "</p>";
+  }
+
+  running = true;
+  aborter = new AbortController();
+  useComputerBtn.disabled = true;
+  useComputerBtn.textContent = "Working…";
+  solveBtn.textContent = "◼ Stop";
+  let doneCount = 0;
+
+  try {
+    const doneDir = await dir.getDirectoryHandle("done", { create: true });
+    for (const job of jobs) {
+      const answerEl = folderCard(job.name);
+      try {
+        const att = await readAttachment(job.file);
+        const text = await solveOne(
+          "Do the task in the attached file according to your instructions, and deliver the finished work.",
+          [att], answerEl, aborter.signal
+        );
+        if (text) {
+          const base = job.name.replace(/\.[^.]+$/, "");
+          const fh = await doneDir.getFileHandle(base + "-result.md", { create: true });
+          const w = await fh.createWritable();
+          await w.write(text);
+          await w.close();
+          doneCount++;
+          answerEl.insertAdjacentHTML("beforeend",
+            '<p class="status">💾 Saved to done/' + escapeHtml(base) + "-result.md</p>");
+        }
+      } catch (e) {
+        if (e.name === "AbortError") {
+          answerEl.innerHTML = '<span class="status">⏹ Stopped.</span>';
+          break;
+        }
+        answerEl.innerHTML = '<span class="error">⚠ ' + escapeHtml(e.message || String(e)) + "</span>";
+      }
+    }
+    computerStatus.insertAdjacentHTML("beforeend",
+      '<p class="hint-note">✅ Finished ' + doneCount + " of " + jobs.length +
+      ' — results are in the "done" folder inside the folder you picked.</p>');
+  } catch (e) {
+    computerStatus.insertAdjacentHTML("beforeend",
+      '<p class="hint-note">⚠ ' + escapeHtml(e.message || String(e)) + "</p>");
+  } finally {
+    running = false;
+    aborter = null;
+    useComputerBtn.disabled = false;
+    useComputerBtn.textContent = "🖥️ Use my computer";
+    solveBtn.textContent = "Do them all ➜";
+  }
+});
 
 const solveBtn = document.getElementById("solveBtn");
 let aborter = null;
