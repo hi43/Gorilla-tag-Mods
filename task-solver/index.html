@@ -187,6 +187,7 @@
       <button class="mode-btn active" data-mode="complete">⚡ Do the task</button>
       <button class="mode-btn" data-mode="plan">🗺️ Make a plan</button>
       <button class="mode-btn" data-mode="improve">✨ Improve my work</button>
+      <button class="mode-btn" data-mode="polish">🎩 Make it professional</button>
     </div>
     <p class="mode-desc" id="modeDesc"></p>
 
@@ -244,6 +245,10 @@ const MODE_INFO = {
   improve: {
     desc: "Paste your draft or attempt — it polishes it and explains what it changed.",
     system: "You are a sharp but constructive editor/reviewer. The user pastes their work (a draft, an answer, code, a plan). First deliver an improved version, then a short bullet list of the key changes you made and why. Preserve the user's voice and intent — improve, don't rewrite into something unrecognizable. Be honest about anything that's wrong or weak. Format math as plain text (no LaTeX)."
+  },
+  polish: {
+    desc: "Paste your text — it rewrites it to sound clear, polished, and professional.",
+    system: "You are an expert editor. Rewrite the user's text so it reads as clear, natural, polished, and professional, while keeping their original meaning, facts, and intent intact. Improve flow, word choice, sentence structure, grammar, and overall tone so it sounds like confident, well-written professional communication. Return the improved version first, then one short line noting the main changes. Do not invent facts or add content the user didn't provide."
   }
 };
 
@@ -306,8 +311,8 @@ const problemsEl = document.getElementById("problems");
 let problemCount = 0;
 
 function placeholderFor() {
-  return mode === "improve"
-    ? "Paste your draft or attempt here…\ne.g.  Here's my email to my landlord, make it more professional: …"
+  return (mode === "improve" || mode === "polish")
+    ? "Paste your text here…\ne.g.  Here's my email to my landlord, make it sound more professional: …"
     : "Describe a task here…\ne.g.  Write a 200-word bio for my YouTube channel about Gorilla Tag mods";
 }
 
